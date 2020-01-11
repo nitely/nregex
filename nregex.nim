@@ -1980,8 +1980,10 @@ proc constructSubmatches(
 ): Captures =
   template currGroup: untyped = result[capts[capt].idx]
   result.setLen(size)
+  if capts.len == 0:
+    return
   var capt = capt
-  while capts[capt].parent != -1:
+  while capt != -1:
     if currGroup.len == 0:
       currGroup.add(-2 .. -2)
     if currGroup[^1].a != -2:
@@ -1991,23 +1993,25 @@ proc constructSubmatches(
     else:
       currGroup[^1].a = capts[capt].bound
     capt = capts[capt].parent
+  for c in result.mitems:
+    c.reverse()
 
 type
   NodeIdx = int16
   CaptIdx = int
-  Submatches = seq[(Rune, NodeIdx, CaptIdx)]
+  Submatches = seq[(int32, NodeIdx, CaptIdx)]
 
 proc submatch(
-  submatches, result: var Submatches,
+  smA, smB: var Submatches,
   capts: var Capts,
   transitions: Transitions,
   states: set[int16],
   i: int,
-  c2: Rune
+  c2: int32
 ) =
   var captx: int
   var matched = true
-  for c, n, capt in submatches.items:
+  for c, n, capt in smA.items:
     for nt in transitions.all[n]:
       if nt notin states:
         continue
@@ -2022,22 +2026,44 @@ proc submatch(
           captx = capts.len-1
         else:
           assert z.kind in assertionKind
-          matched = match(z, c, c2)
+          matched = match(z, c.Rune, c2.Rune)
           if not matched: break
       if matched:
-        result.add((c, nt, captx))
-  swap(submatches, result)
-  submatches.setLen(0)
+        smB.add((c, nt, captx))
+  swap(smA, smB)
+  smB.setLen(0)
 
-proc match(text: string, dfa: Dfa): bool =
-  var q = 0'i32
+proc match(
+  text: string,
+  dfa: Dfa,
+  transitions: Transitions,
+  groupsCount: int
+): (bool, Captures) =
+  var
+    smA: Submatches = @[(-1'i32, 0'i16, -1)]
+    smB: Submatches
+    capts: Capts
+    q = 0'i32
+    s: set[int16]
+    i = 0
   #echo dfa
   for c in text.runes:
     if (q, (reChar, c)) notin dfa:
-      return false
-    q = dfa[(q, (reChar, c))][0]
+      return (false, @[])
+    (q, s) = dfa[(q, (reChar, c))]
+    submatch(smA, smB, capts, transitions, s, i, c.int32)
+    inc i
     #echo q
-  return dfa[(q, (reEOE, "¿".toRune))][1].card > 0
+  (q, s) = dfa[(q, (reEOE, "¿".toRune))]
+  submatch(smA, smB, capts, transitions, s, i, -1'i32)
+  result[0] = s.card > 0
+  var capt: CaptIdx
+  for (_, state, captx) in smA.items:
+    if state in s:
+      capt = captx
+      break
+  if result[0]:
+    result[1] = constructSubmatches(capts, capt, groupsCount)
 
 type
   Regex* = object
@@ -2059,11 +2085,15 @@ proc re(s: string): Regex =
     namedGroups: names)
 
 when isMainModule:
-  proc match(s: string, exp: Regex): bool =
+  proc matchCapt(s: string, exp: Regex): (bool, Captures) =
     var nfa = exp.states
-    discard eRemoval(nfa)
+    var transitions = eRemoval(nfa)
     let dfa = dfa(nfa)
-    return match(s, dfa)
+    return match(s, dfa, transitions, exp.groupsCount)
+
+  proc match(s: string, exp: Regex): bool =
+    let (matched, _) = matchCapt(s, exp)
+    return matched
   
   doAssert match("abc", re"abc")
   doAssert match("ab", re"a(b|c)")
@@ -2072,6 +2102,61 @@ when isMainModule:
   doAssert match("ab", re"(ab)*")
   doAssert match("abab", re"(ab)*")
   doAssert not match("ababc", re"(ab)*")
+  doAssert not match("a", re"(ab)*")
   doAssert match("ab", re"(ab)+")
   doAssert match("abab", re"(ab)+")
   doAssert not match("ababc", re"(ab)+")
+  doAssert not match("a", re"(ab)+")
+
+  doAssert matchCapt("aabcd", re"(aa)bcd") ==
+    (true, @[@[0 .. 1]])
+  doAssert matchCapt("aabc", re"(aa)(bc)") ==
+    (true, @[@[0 .. 1], @[2 .. 3]])
+  doAssert matchCapt("ab", re"a(b|c)") ==
+    (true, @[@[1 .. 1]])
+  doAssert matchCapt("ab", re"(ab)*") ==
+    (true, @[@[0 .. 1]])
+  doAssert matchCapt("abab", re"(ab)*") ==
+    (true, @[@[0 .. 1, 2 .. 3]])
+  doAssert matchCapt("ab", re"((a))b") ==
+    (true, @[@[0 .. 0], @[0 .. 0]])
+  doAssert matchCapt("c", re"((ab)*)c") ==
+    (true, @[@[0 .. -1], @[]])
+  doAssert matchCapt("aab", re"((a)*b)") ==
+    (true, @[@[0 .. 2], @[0 .. 0, 1 .. 1]])
+  doAssert matchCapt("abbbbcccc", re"a(b|c)*") ==
+    (true, @[@[1 .. 1, 2 .. 2, 3 .. 3, 4 .. 4, 5 .. 5, 6 .. 6, 7 .. 7, 8 .. 8]])
+  doAssert matchCapt("ab", re"(a*)(b*)") ==
+    (true, @[@[0 .. 0], @[1 .. 1]])
+  doAssert matchCapt("ab", re"(a)*(b)*") ==
+    (true, @[@[0 .. 0], @[1 .. 1]])
+  doAssert matchCapt("ab", re"(a)*b*") ==
+    (true, @[@[0 .. 0]])
+  doAssert matchCapt("abbb", re"((a(b)*)*(b)*)") ==
+    (true, @[@[0 .. 3], @[0 .. 3], @[1 .. 1, 2 .. 2, 3 .. 3], @[]])
+  doAssert matchCapt("aa", re"(a)+") ==
+    (true, @[@[0 .. 0, 1 .. 1]])
+  doAssert matchCapt("abab", re"(ab)+") ==
+    (true, @[@[0 .. 1, 2 .. 3]])
+  doAssert matchCapt("a", re"(a)?") ==
+    (true, @[@[0 .. 0]])
+  doAssert matchCapt("ab", re"(ab)?") ==
+    (true, @[@[0 .. 1]])
+  doAssert matchCapt("aaabbbaaa", re"(a*|b*)*") ==
+    (true, @[@[0 .. 2, 3 .. 5, 6 .. 8]])
+  doAssert matchCapt("abab", re"(a(b))*") ==
+    (true, @[@[0 .. 1, 2 .. 3], @[1 .. 1, 3 .. 3]])
+  doAssert matchCapt("aaanasdnasd", re"((a)*n?(asd)*)*") ==
+    (true, @[@[0 .. 6, 7 .. 10], @[0 .. 0, 1 .. 1, 2 .. 2], @[4 .. 6, 8 .. 10]])
+  doAssert matchCapt("aaanasdnasd", re"((a)*n?(asd))*") ==
+    (true, @[@[0 .. 6, 7 .. 10], @[0 .. 0, 1 .. 1, 2 .. 2], @[4 .. 6, 8 .. 10]])
+  doAssert matchCapt("abd", re"((ab)c)|((ab)d)") ==
+    (true, @[@[], @[], @[0 .. 2], @[0 .. 1]])
+  doAssert matchCapt("aaa", re"(a*)") ==
+    (true, @[@[0 .. 2]])
+  doAssert matchCapt("aaaa", re"(a*)(a*)") ==
+    (true, @[@[0 .. 3], @[4 .. 3]])
+  doAssert matchCapt("aaaa", re"(a*?)(a*?)") ==
+    (true, @[@[0 .. -1], @[0 .. 3]])
+  doAssert matchCapt("aaaa", re"(a)*(a)") ==
+    (true, @[@[0 .. 0, 1 .. 1, 2 .. 2], @[3 .. 3]])
