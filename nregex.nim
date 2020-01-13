@@ -1833,15 +1833,8 @@ proc teClosure(
 type
   Transitions = object
     all: seq[seq[int16]]
-    z: Table[(int16, int16), seq[Node]]
-  
-  zBoundIdx = int16
-  nextStateIdx = int16
-  Transitions2 = object
-    all: seq[(nextStateIdx, zBoundIdx)]
-    allBounds: seq[Slice[int16]]
-    z: seq[Node]
-    zBounds: seq[Slice[int16]]
+    allZ: seq[seq[int16]]
+    z: seq[seq[Node]]
 
 proc eRemoval(eNfa: var seq[Node]): Transitions =
   ## Remove e-transitions and return
@@ -1851,6 +1844,7 @@ proc eRemoval(eNfa: var seq[Node]): Transitions =
   ## which may help matching performance
   #echo eNfa
   result.all.setLen(eNfa.len)
+  result.allZ.setLen(eNfa.len)
   var statesMap = newSeq[int16](eNfa.len)
   for i in 0 .. statesMap.len-1:
     statesMap[i] = -1
@@ -1877,15 +1871,17 @@ proc eRemoval(eNfa: var seq[Node]): Transitions =
       assert statesMap[qa] > -1
       assert statesMap[qb] > -1
       result.all[statesMap[qa]].add(statesMap[qb])
+      result.allZ[statesMap[qa]].add(-1'i16)
       zc.setLen(0)
       for z in zclosure:
         zc.add(eNfa[z])
-      result.z[(statesMap[qa], statesMap[qb])] = zc
+      if zc.len > 0:
+        result.z.add(zc)
+        result.allZ[statesMap[qa]][^1] = int16(result.z.len-1)
       if qb notin qu:
         qu.incl(qb)
         qw.addFirst(qb)
   result.all.setLen(statePos)
-  # XXX add Node.id instead?
   var nfa = newSeq[Node](statePos)
   for en, nn in statesMap.pairs:
     if nn == -1:
@@ -1899,41 +1895,58 @@ proc eRemoval(eNfa: var seq[Node]): Transitions =
   eNfa.add(nfa)
 
 type
-  AlphabetSym = tuple
-    kind: NodeKind
-    cp: Rune
-  Closure = set[int16]
-  # XXX use seq[int16] instead of set,
-  #     set use too much RAM
-  # XXX put shorthands in its own seq,
-  #     matching is O(n) to match those
-  #     anyway
-  Dfa = Table[(int32, AlphabetSym), (int32, Closure)]
+  AlphabetSym = int32
+  Closure = HashSet[int16]
+  DfaRow = Table[AlphabetSym, int32]
+  DfaClosure = Table[AlphabetSym, Closure]
+  Dfa = object
+    table: seq[DfaRow]
+    closures: seq[DfaClosure]
 
-# XXX Return ascii characters
-#     to speed up shorthands
+const
+  letterEoe = -1'i32
+  letterWord = -2'i32
+
+# XXX include chars from ranges
+#     reCharCI and other symbols
 proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
-  var alphabet: HashSet[AlphabetSym]
-  var sym: AlphabetSym
+  var inAlphabet: HashSet[AlphabetSym]
+  # speedup ascii matching
+  for c in 0 .. 128:
+    assert c.int32 notin inAlphabet
+    result.add(c.int32)
+    inAlphabet.incl(c.int32)
+  # special symbols
+  result.add(letterEoe)
+  result.add(letterWord)
+  # expression chars
   for n in nfa:
-    sym.kind = n.kind
-    sym.cp = n.cp
-    if sym notin alphabet:
-      result.add(sym)
-      alphabet.incl(sym)
+    if n.kind != reChar:
+      continue
+    if n.cp.int32 in inAlphabet:
+      continue
+    assert n.cp.int32 notin inAlphabet
+    result.add(n.cp.int32)
+    inAlphabet.incl(n.cp.int32)
+  assert toHashSet(result).len == result.len
 
 proc delta(
   nfa: seq[Node],
-  states: set[int16],
+  states: Closure,
   sym: AlphabetSym
-): set[int16] =
-  if sym.kind == reChar:
+): Closure =
+  if sym > -1:
     for s in states:
-      if match(nfa[s], sym.cp):
+      if match(nfa[s], sym.Rune):
         result.incl(s)
   else:
+    var letter: int32
     for s in states:
-      if nfa[s].kind == sym.kind:
+      letter = case nfa[s].kind:
+        of reEOE: letterEoe
+        of reWord: letterWord
+        else: 0
+      if letter == sym:
         result.incl(s)
 
 proc dfa(nfa: seq[Node]): Dfa =
@@ -1941,7 +1954,6 @@ proc dfa(nfa: seq[Node]): Dfa =
     for s in states:
       for sn in nfa[s].next:
         result.incl(sn)
-  # XXX use seq instead of set
   let alphabet = createAlphabet(nfa)
   let n0 = 0
   var q0: Closure
@@ -1956,14 +1968,19 @@ proc dfa(nfa: seq[Node]): Dfa =
     let qa = qw.popLast()
     for sym in alphabet:
       let s = delta(nfa, qa, sym)
-      var t: Closure
+      if s.card == 0:
+        continue
+      var t: HashSet[int16]
       closure(t, s)
       if t notin qu:
         qu[t] = quPos
         inc quPos
         qw.addFirst(t)
-      # XXX don't add if t is empty
-      result[(qu[qa], sym)] = (qu[t], s)
+      if qu[qa] >= result.table.len-1:
+        result.table.add(default(DfaRow))
+        result.closures.add(default(DfaClosure))
+      result.table[qu[qa]][sym] = qu[t]
+      result.closures[qu[qa]][sym] = s
 
 type
   CaptNode = object
@@ -1999,25 +2016,28 @@ proc constructSubmatches(
 type
   NodeIdx = int16
   CaptIdx = int
-  Submatches = seq[(int32, NodeIdx, CaptIdx)]
+  Submatches = seq[(NodeIdx, CaptIdx)]
 
-proc submatch(
+template submatch(
   smA, smB: var Submatches,
   capts: var Capts,
   transitions: Transitions,
-  states: set[int16],
+  states: Closure,
   i: int,
-  c2: int32
+  cprev, c: int32
 ) =
   var captx: int
   var matched = true
-  for c, n, capt in smA.items:
-    for nt in transitions.all[n]:
+  for n, capt in smA.items:
+    for nti, nt in transitions.all[n].pairs:
       if nt notin states:
+        continue
+      if transitions.allZ[n][nti] == -1'i16:
+        smB.add((nt, capt))
         continue
       matched = true
       captx = capt
-      for z in transitions.z[(n, nt)]:
+      for z in transitions.z[transitions.allZ[n][nti]]:
         if z.kind in groupKind:
           capts.add(CaptNode(
             parent: captx,
@@ -2026,87 +2046,97 @@ proc submatch(
           captx = capts.len-1
         else:
           assert z.kind in assertionKind
-          matched = match(z, c.Rune, c2.Rune)
+          matched = match(z, cprev.Rune, c.Rune)
           if not matched: break
       if matched:
-        smB.add((c, nt, captx))
+        smB.add((nt, captx))
   swap(smA, smB)
   smB.setLen(0)
-
-proc match(
-  text: string,
-  dfa: Dfa,
-  transitions: Transitions,
-  groupsCount: int
-): (bool, Captures) =
-  var
-    smA: Submatches = @[(-1'i32, 0'i16, -1)]
-    smB: Submatches
-    capts: Capts
-    q = 0'i32
-    s: set[int16]
-    i = 0
-  #echo dfa
-  for c in text.runes:
-    if (q, (reChar, c)) notin dfa:
-      return (false, @[])
-    (q, s) = dfa[(q, (reChar, c))]
-    submatch(smA, smB, capts, transitions, s, i, c.int32)
-    inc i
-    #echo q
-  (q, s) = dfa[(q, (reEOE, "¿".toRune))]
-  submatch(smA, smB, capts, transitions, s, i, -1'i32)
-  result[0] = s.card > 0
-  var capt: CaptIdx
-  for (_, state, captx) in smA.items:
-    if state in s:
-      capt = captx
-      break
-  if result[0]:
-    result[1] = constructSubmatches(capts, capt, groupsCount)
 
 type
   Regex* = object
     ## a compiled regular expression
-    states: seq[Node]
+    dfa: Dfa
+    transitions: Transitions
     groupsCount: int16
     namedGroups: OrderedTable[string, int16]
 
-proc re(s: string): Regex =
+proc match(
+  text: string,
+  regex: Regex
+): (bool, Captures) {.inline.} =
+  #echo dfa
+  var
+    smA: Submatches
+    smB: Submatches
+    capts: Capts
+    cprev = -1'i32
+    q = 0'i32
+    i = 0
+  smA.add((0'i16, -1))
+  #echo dfa
+  for c in text.runes:
+    if c.int32 notin regex.dfa.table[q]:
+      return (false, @[])
+    q = regex.dfa.table[q][c.int32]
+    if regex.groupsCount > 0:
+      submatch(
+        smA, smB, capts, regex.transitions,
+        regex.dfa.closures[q][c.int32], i, cprev, c.int32)
+    inc i
+    cprev = c.int32
+    #echo q
+  result[0] = -1'i16 in regex.dfa.table[q]
+  if not result[0]:
+    return
+  #(q, s) = dfa[q][-1'i32]
+  #if groupsCount > 0:
+  #  submatch(smA, smB, capts, transitions, s, i, -1'i32)
+  #result[0] = s.len > 0
+  #var capt: CaptIdx
+  #for (_, state, captx) in smA.items:
+  #  if state in s:
+  #    capt = captx
+  #    break
+  #if result[0]:
+  #  result[1] = constructSubmatches(capts, capt, groupsCount)
+
+proc re*(s: string): Regex =
   var ns = s.parse
   let gc = ns.fillGroups()
   var names: OrderedTable[string, int16]
   if gc.names.len > 0:
     names = gc.names
   var exp = ns.greediness.applyFlags.expandRepRange.joinAtoms.rpn
+  var nfa = exp.nfa
+  let transitions = eRemoval(nfa)
+  let dfa = dfa(nfa)
   result = Regex(
-    states: exp.nfa,
+    dfa: dfa,
+    transitions: transitions,
     groupsCount: gc.count,
     namedGroups: names)
 
-when isMainModule:
-  proc matchCapt(s: string, exp: Regex): (bool, Captures) =
-    var nfa = exp.states
-    var transitions = eRemoval(nfa)
-    let dfa = dfa(nfa)
-    return match(s, dfa, transitions, exp.groupsCount)
+proc matchCapt(s: string, exp: Regex): (bool, Captures) {.inline.} =
+  return match(s, exp)
 
-  proc match(s: string, exp: Regex): bool =
-    let (matched, _) = matchCapt(s, exp)
-    return matched
-  
-  doAssert match("abc", re"abc")
-  doAssert match("ab", re"a(b|c)")
-  doAssert match("ac", re"a(b|c)")
-  doAssert not match("ad", re"a(b|c)")
-  doAssert match("ab", re"(ab)*")
-  doAssert match("abab", re"(ab)*")
-  doAssert not match("ababc", re"(ab)*")
-  doAssert not match("a", re"(ab)*")
-  doAssert match("ab", re"(ab)+")
-  doAssert match("abab", re"(ab)+")
-  doAssert not match("ababc", re"(ab)+")
-  doAssert not match("a", re"(ab)+")
+proc match2*(s: string, exp: Regex): bool {.inline.} =
+  let (matched, _) = matchCapt(s, exp)
+  return matched
+
+when isMainModule:
+  doAssert match2("abc", re"abc")
+  doAssert match2("ab", re"a(b|c)")
+  doAssert match2("ac", re"a(b|c)")
+  doAssert not match2("ad", re"a(b|c)")
+  doAssert match2("ab", re"(ab)*")
+  doAssert match2("abab", re"(ab)*")
+  doAssert not match2("ababc", re"(ab)*")
+  doAssert not match2("a", re"(ab)*")
+  doAssert match2("ab", re"(ab)+")
+  doAssert match2("abab", re"(ab)+")
+  doAssert not match2("ababc", re"(ab)+")
+  doAssert not match2("a", re"(ab)+")
 
   doAssert matchCapt("aabcd", re"(aa)bcd") ==
     (true, @[@[0 .. 1]])
@@ -2160,3 +2190,9 @@ when isMainModule:
     (true, @[@[0 .. -1], @[0 .. 3]])
   doAssert matchCapt("aaaa", re"(a)*(a)") ==
     (true, @[@[0 .. 0, 1 .. 1, 2 .. 2], @[3 .. 3]])
+  
+
+
+
+  doAssert match2("a", re"a")
+  doAssert match2("a", re"\w")
