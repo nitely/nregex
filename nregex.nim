@@ -1862,7 +1862,7 @@ proc eRemoval(eNfa: var seq[Node]): Transitions =
     let qa = qw.popLast()
     closure.setLen(0)
     teClosure(closure, eNfa, qa)
-    eNfa[qa].next.setLen(0)
+    eNfa[qa].next.setLen(0)  # XXX don't mutate this as we can grab next from result.all later
     for qb, zclosure in closure.items:
       eNfa[qa].next.add(qb)
       if statesMap[qb] == -1:
@@ -1882,6 +1882,7 @@ proc eRemoval(eNfa: var seq[Node]): Transitions =
         qu.incl(qb)
         qw.addFirst(qb)
   result.all.setLen(statePos)
+  result.allZ.setLen(statePos)
   var nfa = newSeq[Node](statePos)
   for en, nn in statesMap.pairs:
     if nn == -1:
@@ -1904,8 +1905,11 @@ type
     closures: seq[DfaClosure]
 
 const
-  letterEoe = -1'i32
-  letterWord = -2'i32
+  symEoe = -1'i32
+  symWord = -3'i32
+  symDigit = -4'i32
+  symWhitespace = -5'i32
+  symAny = -6'i32
 
 # XXX include chars from ranges
 #     reCharCI and other symbols
@@ -1913,19 +1917,20 @@ proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
   var inAlphabet: HashSet[AlphabetSym]
   # speedup ascii matching
   for c in 0 .. 128:
-    assert c.int32 notin inAlphabet
     result.add(c.int32)
     inAlphabet.incl(c.int32)
   # special symbols
-  result.add(letterEoe)
-  result.add(letterWord)
+  result.add(symEoe)
+  result.add(symWord)
+  result.add(symDigit)
+  result.add(symWhitespace)
+  result.add(symAny)
   # expression chars
   for n in nfa:
     if n.kind != reChar:
       continue
     if n.cp.int32 in inAlphabet:
       continue
-    assert n.cp.int32 notin inAlphabet
     result.add(n.cp.int32)
     inAlphabet.incl(n.cp.int32)
   assert toHashSet(result).len == result.len
@@ -1940,13 +1945,17 @@ proc delta(
       if match(nfa[s], sym.Rune):
         result.incl(s)
   else:
-    var letter: int32
+    # We must include supersets
+    # for each kind
+    let kinds = case sym
+      of symEoe: {reEoe}
+      of symWord: {reAny, reWord}
+      of symDigit: {reAny, reWord, reDigit}
+      of symWhitespace: {reAny, reWhiteSpace}
+      of symAny: {reAny}
+      else: {}
     for s in states:
-      letter = case nfa[s].kind:
-        of reEOE: letterEoe
-        of reWord: letterWord
-        else: 0
-      if letter == sym:
+      if nfa[s].kind in kinds:
         result.incl(s)
 
 proc dfa(nfa: seq[Node]): Dfa =
@@ -2061,6 +2070,32 @@ type
     groupsCount: int16
     namedGroups: OrderedTable[string, int16]
 
+# Order matters, subsets first
+const syms = [
+  symDigit,
+  symWord,
+  symWhitespace,
+  symAny
+]
+
+# Slow match
+template symMatch(table, q, c: untyped) =
+  var matched: bool
+  for sym in syms:
+    if sym notin table[q]:
+      continue
+    matched = case sym:
+      of symDigit: c.isDecimal()
+      of symWord: c.isWord()
+      of symWhitespace: c.isWhiteSpace()
+      of symAny: c != lineBreakRune
+      else: false
+    if matched:
+      q = table[q][sym]
+      break
+  if not matched:
+    q = -1'i32
+
 proc match(
   text: string,
   regex: Regex
@@ -2076,9 +2111,12 @@ proc match(
   smA.add((0'i16, -1))
   #echo dfa
   for c in text.runes:
-    if c.int32 notin regex.dfa.table[q]:
-      return (false, @[])
-    q = regex.dfa.table[q][c.int32]
+    if (c.int32 in regex.dfa.table[q]).likely:
+      q = regex.dfa.table[q][c.int32]
+    else:
+      symMatch(regex.dfa.table, q, c)
+      if q == -1:
+        return (false, @[])
     if regex.groupsCount > 0:
       submatch(
         smA, smB, capts, regex.transitions,
@@ -2086,7 +2124,7 @@ proc match(
     inc i
     cprev = c.int32
     #echo q
-  result[0] = -1'i16 in regex.dfa.table[q]
+  result[0] = symEoe in regex.dfa.table[q]
   if not result[0]:
     return
   #(q, s) = dfa[q][-1'i32]
