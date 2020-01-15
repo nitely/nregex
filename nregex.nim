@@ -2107,15 +2107,16 @@ proc match(
     capts: Capts
     cprev = -1'i32
     q = 0'i32
+    qnext = 0'i32
     i = 0
   smA.add((0'i16, -1))
   #echo dfa
   for c in text.runes:
     if (c.int32 in regex.dfa.table[q]).likely:
-      q = regex.dfa.table[q][c.int32]
+      qnext = regex.dfa.table[q][c.int32]
     else:
-      symMatch(regex.dfa.table, q, c)
-      if q == -1:
+      symMatch(regex.dfa.table, qnext, c)
+      if qnext == -1:
         return (false, @[])
     if regex.groupsCount > 0:
       submatch(
@@ -2123,21 +2124,17 @@ proc match(
         regex.dfa.closures[q][c.int32], i, cprev, c.int32)
     inc i
     cprev = c.int32
+    q = qnext
     #echo q
   result[0] = symEoe in regex.dfa.table[q]
   if not result[0]:
     return
-  #(q, s) = dfa[q][-1'i32]
-  #if groupsCount > 0:
-  #  submatch(smA, smB, capts, transitions, s, i, -1'i32)
-  #result[0] = s.len > 0
-  #var capt: CaptIdx
-  #for (_, state, captx) in smA.items:
-  #  if state in s:
-  #    capt = captx
-  #    break
-  #if result[0]:
-  #  result[1] = constructSubmatches(capts, capt, groupsCount)
+  if regex.groupsCount == 0:
+    return
+  submatch(
+    smA, smB, capts, regex.transitions,
+    regex.dfa.closures[q][-1'i32], i, cprev, -1'i32)
+  result[1] = constructSubmatches(capts, smA[0][1], regex.groupsCount)
 
 proc re*(s: string): Regex =
   var ns = s.parse
@@ -2175,6 +2172,7 @@ when isMainModule:
   doAssert match2("abab", re"(ab)+")
   doAssert not match2("ababc", re"(ab)+")
   doAssert not match2("a", re"(ab)+")
+  doAssert match2("aa", re"\b\b\baa\b\b\b")
 
   doAssert matchCapt("aabcd", re"(aa)bcd") ==
     (true, @[@[0 .. 1]])
