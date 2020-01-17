@@ -1893,15 +1893,17 @@ proc eRemoval(eNfa: var seq[Node]): Transitions =
       assert statesMap[en2] > -1
       nfa[nn].next.add(statesMap[en2])
   eNfa.setLen(0)
-  eNfa.add(nfa)
+  for asd in nfa:
+    eNfa.add(asd)
 
 type
   AlphabetSym = int32
   Closure = HashSet[int16]
   DfaRow = Table[AlphabetSym, int32]
-  DfaClosure = Table[AlphabetSym, Closure]
+  DfaClosure = Table[AlphabetSym, int32]
   Dfa = object
     table: seq[DfaRow]
+    cs: seq[Closure]
     closures: seq[DfaClosure]
 
 const
@@ -1911,8 +1913,7 @@ const
   symWhitespace = -5'i32
   symAny = -6'i32
 
-# XXX include chars from ranges
-#     reCharCI and other symbols
+# XXX include reCharCI and other symbols
 proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
   var inAlphabet: HashSet[AlphabetSym]
   # speedup ascii matching
@@ -1927,12 +1928,23 @@ proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
   result.add(symAny)
   # expression chars
   for n in nfa:
-    if n.kind != reChar:
-      continue
-    if n.cp.int32 in inAlphabet:
-      continue
-    result.add(n.cp.int32)
-    inAlphabet.incl(n.cp.int32)
+    case n.kind
+    of reChar:
+      if n.cp.int32 notin inAlphabet:
+        result.add(n.cp.int32)
+        inAlphabet.incl(n.cp.int32)
+    of reInSet:
+      for cp in n.cps:
+        if cp.int32 notin inAlphabet:
+          result.add(cp.int32)
+          inAlphabet.incl(cp.int32)
+      for rg in n.ranges:
+        for cp in rg:
+          if cp.int32 notin inAlphabet:
+            result.add(cp.int32)
+            inAlphabet.incl(cp.int32)
+    else:
+      discard
   assert toHashSet(result).len == result.len
 
 proc delta(
@@ -1945,8 +1957,6 @@ proc delta(
       if match(nfa[s], sym.Rune):
         result.incl(s)
   else:
-    # We must include supersets
-    # for each kind
     let kinds = case sym
       of symEoe: {reEoe}
       of symWord: {reAny, reWord}
@@ -1957,6 +1967,11 @@ proc delta(
     for s in states:
       if nfa[s].kind in kinds:
         result.incl(s)
+      if nfa[s].kind == reInSet:
+        for sh in nfa[s].shorthands:
+          if sh.kind in kinds:
+            result.incl(s)
+            break
 
 proc dfa(nfa: seq[Node]): Dfa =
   template closure(result, states) =
@@ -1977,7 +1992,7 @@ proc dfa(nfa: seq[Node]): Dfa =
     let qa = qw.popLast()
     for sym in alphabet:
       let s = delta(nfa, qa, sym)
-      if s.card == 0:
+      if s.len == 0:
         continue
       var t: HashSet[int16]
       closure(t, s)
@@ -1989,7 +2004,8 @@ proc dfa(nfa: seq[Node]): Dfa =
         result.table.add(default(DfaRow))
         result.closures.add(default(DfaClosure))
       result.table[qu[qa]][sym] = qu[t]
-      result.closures[qu[qa]][sym] = s
+      result.cs.add(s)
+      result.closures[qu[qa]][sym] = int32(result.cs.len-1)
 
 type
   CaptNode = object
@@ -2027,14 +2043,14 @@ type
   CaptIdx = int
   Submatches = seq[(NodeIdx, CaptIdx)]
 
-template submatch(
+proc submatch(
   smA, smB: var Submatches,
   capts: var Capts,
   transitions: Transitions,
   states: Closure,
   i: int,
   cprev, c: int32
-) =
+) {.inline.} =
   var captx: int
   var matched = true
   for n, capt in smA.items:
@@ -2118,10 +2134,12 @@ proc match(
       symMatch(regex.dfa.table, qnext, c)
       if qnext == -1:
         return (false, @[])
-    if regex.groupsCount > 0:
+    # XXX most of the slowness here
+    #     comes from accessing the closure
+    if regex.transitions.z.len > 0:
       submatch(
         smA, smB, capts, regex.transitions,
-        regex.dfa.closures[q][c.int32], i, cprev, c.int32)
+        regex.dfa.cs[regex.dfa.closures[q][c.int32]], i, cprev, c.int32)
     inc i
     cprev = c.int32
     q = qnext
@@ -2129,11 +2147,14 @@ proc match(
   result[0] = symEoe in regex.dfa.table[q]
   if not result[0]:
     return
-  if regex.groupsCount == 0:
+  if regex.transitions.z.len == 0:
     return
   submatch(
     smA, smB, capts, regex.transitions,
-    regex.dfa.closures[q][-1'i32], i, cprev, -1'i32)
+    regex.dfa.cs[regex.dfa.closures[q][-1'i32]], i, cprev, -1'i32)
+  if smA.len == 0:
+    result[0] = false
+    return
   result[1] = constructSubmatches(capts, smA[0][1], regex.groupsCount)
 
 proc re*(s: string): Regex =
@@ -2173,6 +2194,13 @@ when isMainModule:
   doAssert not match2("ababc", re"(ab)+")
   doAssert not match2("a", re"(ab)+")
   doAssert match2("aa", re"\b\b\baa\b\b\b")
+  doAssert not match2("cac", re"(c\ba\bc)")
+  doAssert match2("abc", re"[abc]+")
+  doAssert match2("abc", re"[\w]+")
+  doAssert match2("弢弢弢", re"[\w]+")
+  doAssert not match2("abc", re"[\d]+")
+  doAssert match2("123", re"[\d]+")
+  #doAssert match2("!!", re"[\W]+")
 
   doAssert matchCapt("aabcd", re"(aa)bcd") ==
     (true, @[@[0 .. 1]])
