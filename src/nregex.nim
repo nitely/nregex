@@ -2190,7 +2190,7 @@ proc match(
     return
   submatch(
     smA, smB, capts, regex.transitions,
-    regex.dfa.cs[regex.dfa.closures[q][-1'i32]], i, cprev, -1'i32)
+    regex.dfa.cs[regex.dfa.closures[q][symEoe]], i, cprev, -1'i32)
   if smA.len == 0:
     result[0] = false
     return
