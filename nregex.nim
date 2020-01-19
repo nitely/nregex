@@ -468,6 +468,15 @@ const
   groupKind = {
     reGroupStart,
     reGroupEnd}
+  matchTransitionKind = {
+    reWhiteSpace,
+    reUCC,
+    reNotAlphaNum,
+    reNotDigit,
+    reNotWhiteSpace,
+    reNotUCC,
+    reInSet,
+    reNotSet}
 
 proc cmp(x, y: Rune): int =
   x.int - y.int
@@ -1814,6 +1823,16 @@ proc teClosure(
   var zTransitionsCurr = zTransitions
   if nfa[state].kind in groupKind + assertionKind:
     zTransitionsCurr.add(state)
+  if nfa[state].kind in {reInSet, reNotSet}:  # XXX don't do this in ascii mode
+    # XXX skip if subset of {reAny, reAnyNl, reDigit, reWord} for reInSet
+    if nfa[state].shorthands.len > 0:
+      zTransitionsCurr.add(state)
+    result.add((state, zTransitionsCurr))
+    return
+  if nfa[state].kind in matchTransitionKind:  # XXX don't do this in ascii mode
+    zTransitionsCurr.add(state)
+    result.add((state, zTransitionsCurr))
+    return
   if nfa[state].kind in matchableKind + {reEOE}:
     result.add((state, zTransitionsCurr))
     return
@@ -1887,14 +1906,17 @@ proc eRemoval(eNfa: var seq[Node]): Transitions =
   for en, nn in statesMap.pairs:
     if nn == -1:
       continue
-    nfa[nn] = eNfa[en]
+    nfa[nn] = case eNfa[en].kind
+      of matchTransitionKind:
+        Node(kind: reAnyNl, cp: "#".toRune)
+      else:
+        eNfa[en]
     nfa[nn].next.setLen(0)
     for en2 in eNfa[en].next:
       assert statesMap[en2] > -1
       nfa[nn].next.add(statesMap[en2])
   eNfa.setLen(0)
-  for asd in nfa:
-    eNfa.add(asd)
+  eNfa.add(nfa)
 
 type
   AlphabetSym = int32
@@ -1910,10 +1932,9 @@ const
   symEoe = -1'i32
   symWord = -3'i32
   symDigit = -4'i32
-  symWhitespace = -5'i32
   symAny = -6'i32
+  symAnyNl = -7'i32
 
-# XXX include reCharCI and other symbols
 proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
   var inAlphabet: HashSet[AlphabetSym]
   # speedup ascii matching
@@ -1924,8 +1945,8 @@ proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
   result.add(symEoe)
   result.add(symWord)
   result.add(symDigit)
-  result.add(symWhitespace)
   result.add(symAny)
+  result.add(symAnyNl)
   # expression chars
   for n in nfa:
     case n.kind
@@ -1933,6 +1954,14 @@ proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
       if n.cp.int32 notin inAlphabet:
         result.add(n.cp.int32)
         inAlphabet.incl(n.cp.int32)
+    of reCharCi:
+      if n.cp.int32 notin inAlphabet:
+        result.add(n.cp.int32)
+        inAlphabet.incl(n.cp.int32)
+      let cp2 = n.cp.swapCase()
+      if cp2.int32 notin inAlphabet:
+        result.add(cp2.int32)
+        inAlphabet.incl(cp2.int32)
     of reInSet:
       for cp in n.cps:
         if cp.int32 notin inAlphabet:
@@ -1957,12 +1986,13 @@ proc delta(
       if match(nfa[s], sym.Rune):
         result.incl(s)
   else:
+    # XXX this will add every sym for reAny, but we should only add symAny
     let kinds = case sym
       of symEoe: {reEoe}
-      of symWord: {reAny, reWord}
-      of symDigit: {reAny, reWord, reDigit}
-      of symWhitespace: {reAny, reWhiteSpace}
-      of symAny: {reAny}
+      of symWord: {reAnyNl, reAny, reWord}
+      of symDigit: {reAnyNl, reAny, reWord, reDigit}
+      of symAny: {reAnyNl, reAny}
+      of symAnyNl: {reAnyNl}
       else: {}
     for s in states:
       if nfa[s].kind in kinds:
@@ -2063,16 +2093,22 @@ proc submatch(
       matched = true
       captx = capt
       for z in transitions.z[transitions.allZ[n][nti]]:
-        if z.kind in groupKind:
+        if not matched:
+          break
+        case z.kind
+        of groupKind:
           capts.add(CaptNode(
             parent: captx,
             bound: i,
             idx: z.idx))
           captx = capts.len-1
-        else:
-          assert z.kind in assertionKind
+        of assertionKind:
           matched = match(z, cprev.Rune, c.Rune)
-          if not matched: break
+        of matchTransitionKind:
+          matched = match(z, c.Rune)
+        else:
+          assert false
+          discard
       if matched:
         smB.add((nt, captx))
   swap(smA, smB)
@@ -2090,24 +2126,25 @@ type
 const syms = [
   symDigit,
   symWord,
-  symWhitespace,
-  symAny
+  symAny,
+  symAnyNl
 ]
 
 # Slow match
-template symMatch(table, q, c: untyped) =
-  var matched: bool
+template symMatch(table, q, c, cSym: untyped) =
+  var matched = false
   for sym in syms:
     if sym notin table[q]:
       continue
     matched = case sym:
       of symDigit: c.isDecimal()
       of symWord: c.isWord()
-      of symWhitespace: c.isWhiteSpace()
       of symAny: c != lineBreakRune
+      of symAnyNl: true
       else: false
     if matched:
       q = table[q][sym]
+      cSym = sym
       break
   if not matched:
     q = -1'i32
@@ -2121,17 +2158,19 @@ proc match(
     smA: Submatches
     smB: Submatches
     capts: Capts
-    cprev = -1'i32
+    cPrev = -1'i32
+    cSym: int32
     q = 0'i32
     qnext = 0'i32
     i = 0
   smA.add((0'i16, -1))
-  #echo dfa
+  #echo regex.dfa
   for c in text.runes:
+    cSym = c.int32
     if (c.int32 in regex.dfa.table[q]).likely:
       qnext = regex.dfa.table[q][c.int32]
     else:
-      symMatch(regex.dfa.table, qnext, c)
+      symMatch(regex.dfa.table, qnext, c, cSym)
       if qnext == -1:
         return (false, @[])
     # XXX most of the slowness here
@@ -2139,9 +2178,9 @@ proc match(
     if regex.transitions.z.len > 0:
       submatch(
         smA, smB, capts, regex.transitions,
-        regex.dfa.cs[regex.dfa.closures[q][c.int32]], i, cprev, c.int32)
+        regex.dfa.cs[regex.dfa.closures[q][cSym]], i, cPrev, c.int32)
     inc i
-    cprev = c.int32
+    cPrev = c.int32
     q = qnext
     #echo q
   result[0] = symEoe in regex.dfa.table[q]
@@ -2194,13 +2233,18 @@ when isMainModule:
   doAssert not match2("ababc", re"(ab)+")
   doAssert not match2("a", re"(ab)+")
   doAssert match2("aa", re"\b\b\baa\b\b\b")
-  doAssert not match2("cac", re"(c\ba\bc)")
+  doAssert not match2("cac", re"c\ba\bc")
   doAssert match2("abc", re"[abc]+")
   doAssert match2("abc", re"[\w]+")
   doAssert match2("弢弢弢", re"[\w]+")
   doAssert not match2("abc", re"[\d]+")
   doAssert match2("123", re"[\d]+")
-  #doAssert match2("!!", re"[\W]+")
+  doAssert match2("abc$%&", re".+")
+  doAssert not match2("abc$%&\L", re"(.+)")
+  doAssert not match2("abc$%&\L", re".+")
+  doAssert not match2("弢", re"\W")
+  doAssert match2("$%&", re"\W+")
+  doAssert match2("abc123", re"[^\W]+")
 
   doAssert matchCapt("aabcd", re"(aa)bcd") ==
     (true, @[@[0 .. 1]])
