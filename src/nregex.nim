@@ -34,6 +34,8 @@ proc matchMacro*(s: string, exp: static Regex): bool {.inline.} =
 when isMainModule:
   const pat1 = re"abc"
   doAssert matchMacro("abc", pat1)
+  const pat2 = re"\w"
+  doAssert matchMacro("a", pat2)
 
   doAssert match2("abc", re"abc")
   doAssert match2("ab", re"a(b|c)")
