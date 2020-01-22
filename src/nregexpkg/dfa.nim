@@ -3,6 +3,7 @@ import sets
 import tables
 import deques
 import algorithm
+import macros
 
 import unicodeplus except isUpper, isLower
 
@@ -289,3 +290,49 @@ proc matchImpl*(
     result[0] = false
     return
   result[1] = constructSubmatches(capts, smA[0][1], regex.groupsCount)
+
+macro genTable(
+  q, c: int32,
+  table: static seq[DfaRow]
+): untyped =
+  ## Generate transition table
+  var caseStmtColumn: seq[NimNode]
+  caseStmtColumn.add(newIdentNode("q"))
+  for i, t in table.pairs:
+    var caseStmtRow: seq[NimNode]
+    caseStmtRow.add(newIdentNode("c"))
+    for c2, t2 in t:
+      caseStmtRow.add(newTree(nnkOfBranch,
+        newIntLitNode(c2),
+        newStmtList(
+          newAssignment(newIdentNode("q"), newIntLitNode(t2)))))
+    caseStmtRow.add(newTree(nnkElse,
+      newStmtList(
+        newTree(nnkReturnStmt, newIdentNode("false")))))
+    caseStmtColumn.add(newTree(nnkOfBranch,
+      newIntLitNode(i),
+      newStmtList(
+        newTree(nnkCaseStmt, caseStmtRow))))
+  caseStmtColumn.add(newTree(nnkElse,
+      newStmtList(
+        newTree(nnkDiscardStmt, newEmptyNode()))))
+  result = newStmtList(
+    newTree(nnkCaseStmt, caseStmtColumn))
+  #echo repr(result)
+
+# x10 times faster than matchImpl
+proc matchImpl2*(
+  text: string,
+  regex2: static Regex
+): bool {.inline.} =
+  var q = 0'i32
+  var c: int32
+  for r in text:
+    c = r.int32
+    genTable(q, c, regex2.dfa.table)
+  #for c in text.runes:
+    #if (c.int32 in regex.dfa.table[q]).likely:
+    #  q = regex.dfa.table[q][c.int32]
+    #else:
+    #  return false
+  return symEoe in regex2.dfa.table[q]

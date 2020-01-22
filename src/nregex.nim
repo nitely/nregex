@@ -3,6 +3,10 @@ import nregexpkg/exptransformation
 import nregexpkg/nfa
 import nregexpkg/dfa
 
+#type
+#  Regex* = dfa.Regex
+#  Captures* = dfa.Captures
+
 proc re*(s: string): Regex =
   var groups: GroupsCapture
   var transitions: Transitions
@@ -24,7 +28,13 @@ proc match2*(s: string, exp: Regex): bool {.inline.} =
   let (matched, _) = matchCapt(s, exp)
   return matched
 
+proc matchMacro*(s: string, exp: static Regex): bool {.inline.} =
+  return matchImpl2(s, exp)
+
 when isMainModule:
+  const pat1 = re"abc"
+  doAssert matchMacro("abc", pat1)
+
   doAssert match2("abc", re"abc")
   doAssert match2("ab", re"a(b|c)")
   doAssert match2("ac", re"a(b|c)")
