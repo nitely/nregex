@@ -192,10 +192,12 @@ proc teClosure(
     teClosure(result, nfa, s, visited, zclosure)
 
 type
+  TransitionsAll* = seq[seq[int16]]
+  ZclosureStates* = seq[seq[Node]]
   Transitions* = object
-    all*: seq[seq[int16]]
-    allZ*: seq[seq[int16]]
-    z*: seq[seq[Node]]
+    all*: TransitionsAll
+    allZ*: TransitionsAll
+    z*: ZclosureStates
 
 proc eRemoval(
   eNfa: seq[Node],

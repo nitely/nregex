@@ -218,6 +218,94 @@ type
     groupsCount*: int16
     namedGroups*: OrderedTable[string, int16]
 
+macro genClosureTable(
+  q, c: int32,
+  nt: int16,
+  cs: static seq[Closure],
+  closures: static seq[DfaClosure]
+): untyped =
+  #[
+  case q:
+  of 1.int32:
+    case c:
+    of 'A'.int32:
+      case nt:
+      of 2.int32:
+        true
+      else:
+        false
+    else: false
+  else: false
+  ]#
+  doAssert cs.len > 0
+  result = newStmtList()
+  var caseStmtQ: seq[NimNode]
+  caseStmtQ.add(ident"q")
+  for i, t in closures.pairs:
+    var caseStmtC: seq[NimNode]
+    caseStmtC.add(ident"c")
+    for c2, t2 in t:
+      var caseStmtNt: seq[NimNode]
+      caseStmtNt.add(ident"nt")
+      for s in cs[t2]:
+        caseStmtNt.add(newTree(nnkOfBranch,
+          newLit s.int16,
+          newStmtList(
+            newTree(nnkReturnStmt,
+              ident"true"))))
+      caseStmtNt.add(newTree(nnkElse,
+        newStmtList(
+          newTree(nnkReturnStmt,
+            ident"false"))))
+      caseStmtC.add(newTree(nnkOfBranch,
+          newLit c2.int32,
+          newStmtList(
+            caseStmtNt)))
+    caseStmtC.add(newTree(nnkElse,
+        newStmtList(
+          newTree(nnkReturnStmt,
+            ident"false"))))
+    caseStmtQ.add(newTree(nnkOfBranch,
+          newLit i.int32,
+          newStmtList(
+            caseStmtC)))
+  caseStmtQ.add(newTree(nnkElse,
+    newStmtList(
+      newTree(nnkReturnStmt,
+        ident"false"))))
+  result.add(caseStmtQ)
+
+proc closureTable(
+  q, c: int32,
+  nt: int16,
+  cs: static seq[Closure],
+  closures: static seq[DfaClosure]
+): bool =
+  genClosureTable(q, c, nt, cs, closure)
+
+macro genSubmatch(
+  q: int32,
+  transitions, transitionsZ: static TransitionsAll,
+  z: static ZclosureStates,
+  cs: static seq[Closure],
+  closures: static seq[DfaClosure]
+): untyped =
+  result = newStmtList()
+  for t in transitions:
+    var caseStmtColumn: seq[NimNode]
+    #caseStmtColumn.add(t)
+    for nti, nt in t.pairs:
+      discard
+
+proc submatch(
+  smA, smB: var Submatches,
+  capts: var Capts,
+  regex: static Regex,
+  i: int,
+  cprev, c: int32
+) {.inline.} =
+  discard
+
 # Order matters, subsets first
 const syms = [
   symDigit,
@@ -298,9 +386,9 @@ macro genSymMatchTable(
 ): untyped =
   ## Generate symMatch transition table
   result = newStmtList()
-  var caseStmtColumn: seq[NimNode]
-  caseStmtColumn.add(ident"q")
-  var columnBranches: seq[NimNode]
+  var caseStmtQ: seq[NimNode]
+  caseStmtQ.add(ident"q")
+  var qBranches: seq[NimNode]
   for i, t in table.pairs:
     var symIfs: seq[NimNode]
     for sym in syms:
@@ -315,7 +403,7 @@ macro genSymMatchTable(
           newStmtList(
             newAssignment(
               ident"qnext",
-              newLit(table[i][symDigit])))))
+              newLit table[i][symDigit]))))
       of symWord:
         symIfs.add(newTree(nnkElifBranch,
           newCall(
@@ -324,24 +412,24 @@ macro genSymMatchTable(
           newStmtList(
             newAssignment(
               ident"qnext",
-              newLit(table[i][symWord])))))
+              newLit table[i][symWord]))))
       of symAny:
         symIfs.add(newTree(nnkElifBranch,
           newTree(nnkInfix,
             ident"!=",
             ident"c",
-            newLit(lineBreakRune.int32)),
+            newLit lineBreakRune.int32),
           newStmtList(
             newAssignment(
               ident"qnext",
-              newLit(table[i][symAny])))))
+              newLit table[i][symAny]))))
       of symAnyNl:
         symIfs.add(newTree(nnkElifBranch,
             ident"true",
             newStmtList(
               newAssignment(
                 ident"qnext",
-                newLit(table[i][symAnyNl])))))
+                newLit table[i][symAnyNl]))))
       else:
         discard
     if symIfs.len > 0:
@@ -349,21 +437,21 @@ macro genSymMatchTable(
         newStmtList(
           newAssignment(
             ident"qnext",
-            newLit(-1'i32)))))
-      columnBranches.add(newTree(nnkOfBranch,
-        newLit(i.int32),
+            newLit -1'i32))))
+      qBranches.add(newTree(nnkOfBranch,
+        newLit i.int32,
         newStmtList(
           newTree(nnkIfStmt,
             symIfs))))
-  if columnBranches.len > 0:
-    caseStmtColumn.add(columnBranches)
-    caseStmtColumn.add(newTree(nnkElse,
+  if qBranches.len > 0:
+    caseStmtQ.add(qBranches)
+    caseStmtQ.add(newTree(nnkElse,
       newStmtList(
         newAssignment(
           ident"qnext",
-          newLit(-1'i32)))))
+          newLit -1'i32))))
     result.add(newTree(nnkCaseStmt,
-      caseStmtColumn))
+      caseStmtQ))
   #echo repr(result)
 
 macro genTable(
@@ -371,34 +459,35 @@ macro genTable(
   table: static seq[DfaRow]
 ): untyped =
   ## Generate transition table
-  var caseStmtColumn: seq[NimNode]
-  caseStmtColumn.add(ident"q")
+  var caseStmtQ: seq[NimNode]
+  caseStmtQ.add(ident"q")
   for i, t in table.pairs:
-    var caseStmtRow: seq[NimNode]
-    caseStmtRow.add(ident"c")
+    var caseStmtC: seq[NimNode]
+    caseStmtC.add(ident"c")
     for c2, t2 in t:
-      caseStmtRow.add(newTree(nnkOfBranch,
-        newLit(c2),
+      caseStmtC.add(newTree(nnkOfBranch,
+        newLit c2,
         newStmtList(
           newAssignment(
             ident"qnext",
-            newLit(t2)))))
-    caseStmtRow.add(newTree(nnkElse,
+            newLit t2.int32))))
+    caseStmtC.add(newTree(nnkElse,
       newStmtList(
         newAssignment(
           ident"qnext",
-          newLit(-1'i32)))))
-    caseStmtColumn.add(newTree(nnkOfBranch,
-      newLit(i.int32),
+          newLit -1'i32))))
+    caseStmtQ.add(newTree(nnkOfBranch,
+      newLit i.int32,
       newStmtList(
         newTree(nnkCaseStmt,
-          caseStmtRow))))
-  caseStmtColumn.add(newTree(nnkElse,
+          caseStmtC))))
+  caseStmtQ.add(newTree(nnkElse,
       newStmtList(
         newTree(nnkDiscardStmt,
           newEmptyNode()))))
   result = newStmtList(
-    newTree(nnkCaseStmt, caseStmtColumn))
+    newTree(nnkCaseStmt,
+      caseStmtQ))
   #echo repr(result)
 
 # x10 times faster than matchImpl
@@ -407,9 +496,15 @@ proc matchImpl2*(
   regex: static Regex
 ): bool {.inline.} =
   var
+    smA: Submatches
+    smB: Submatches
+    capts: Capts
+    cPrev = -1'i32
+    c: int32
     q = 0'i32
     qnext = 0'i32
-    c: int32
+    i = 0
+  smA.add((0'i16, -1))
   for r in text:
     c = r.int32
     genTable(q, qnext, c, regex.dfa.table)
@@ -419,4 +514,6 @@ proc matchImpl2*(
       if (qnext == -1'i32).unlikely:
         return false
     q = qnext
+    cPrev = r.int32
+    inc i
   return symEoe in regex.dfa.table[q]
