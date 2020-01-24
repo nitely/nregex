@@ -14,7 +14,7 @@ proc re*(s: string): Regex =
     .parse
     .transformExp(groups)
     .nfa(transitions)
-    .dfa
+    .dfa2
   result = Regex(
     dfa: dfa,
     transitions: transitions,
@@ -28,14 +28,24 @@ proc match2*(s: string, exp: Regex): bool {.inline.} =
   let (matched, _) = matchCapt(s, exp)
   return matched
 
-proc matchMacro*(s: string, exp: static Regex): bool {.inline.} =
+proc matchMacroCapt(s: string, exp: static Regex): (bool, Captures) {.inline.} =
   return matchImpl2(s, exp)
+
+proc matchMacro*(s: string, exp: static Regex): bool {.inline.} =
+  let (matched, _) = matchMacroCapt(s, exp)
+  return matched
 
 when isMainModule:
   const pat1 = re"abc"
   doAssert matchMacro("abc", pat1)
   const pat2 = re"\w"
   doAssert matchMacro("a", pat2)
+  const pat3 = re"(aa)bc"
+  doAssert matchMacroCapt("aabc", pat3) ==
+    (true, @[@[0 .. 1]])
+  const pat4 = re"((a(b)*)*(b)*)"
+  doAssert matchMacroCapt("abbb", pat4) ==
+    (true, @[@[0 .. 3], @[0 .. 3], @[1 .. 1, 2 .. 2, 3 .. 3], @[]])
 
   doAssert match2("abc", re"abc")
   doAssert match2("ab", re"a(b|c)")
