@@ -262,29 +262,33 @@ proc symMatch(
 template longestMatchEnter() {.dirty.} =
   if symEoe in regex.dfa.table[q]:
     matchedLong = true  # xxx remove, use boundaries
-    submatch(
-      smA, smB, capts, regex.transitions,
-      regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, c.int32)
-    if smA.len > 0:
-      captLong = smA[0][1]
-    swap(smA, smB)
+    if regex.transitions.z.len > 0:
+      submatch(
+        smA, smB, capts, regex.transitions,
+        regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, c.int32)
+      if smA.len > 0:
+        captLong = smA[0][1]
+      swap(smA, smB)
 
 template longestMatchExit() {.dirty.} =
   result = matchedLong
-  #if captLong == -1:
-  #  return
-  constructSubmatches(captures, capts, captLong, regex.groupsCount)
+  if regex.transitions.z.len > 0:
+    constructSubmatches(captures, capts, captLong, regex.groupsCount)
   return
 
 template shortestMatch() {.dirty.} =
   if symEoe in regex.dfa.table[q]:
-    submatch(
-      smA, smB, capts, regex.transitions,
-      regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, c.int32)
-    if smA.len > 0:
+    if regex.transitions.z.len > 0:
+      submatch(
+        smA, smB, capts, regex.transitions,
+        regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, c.int32)
+      if smA.len > 0:
+        result = true
+        return
+      swap(smA, smB)
+    else:
       result = true
       return
-    swap(smA, smB)
 
 proc matchImpl*(
   text: string,
@@ -327,8 +331,8 @@ proc matchImpl*(
           longestMatchExit()
         else:
           return
-    #if regex.transitions.z.len > 0:
-    submatch(
+    if regex.transitions.z.len > 0:
+      submatch(
         smA, smB, capts, regex.transitions,
         regex.dfa.cs[regex.dfa.closures[q][cSym]], iPrev, cPrev, c.int32)
     iPrev = i
