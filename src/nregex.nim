@@ -18,7 +18,7 @@ type
     namedGroups: OrderedTable[string, int16]
     boundaries*: Slice[int]
 
-template reImpl(s: string): Regex =
+template reImpl(s: untyped): Regex =
   var groups: GroupsCapture
   var transitions: Transitions
   let dfa = s
