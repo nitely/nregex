@@ -14,6 +14,29 @@ nimble install nregex
 
 Nim +1.0.4
 
+## Usage
+
+```nim
+import nregex
+
+var m: RegexMatch
+doAssert match("abc", re"abc", m)
+doAssert match("ab", re"a(b|c)", m)
+
+doAssert match("aabcd", re"(aa)bcd", m)
+doAssert m.group(0) == @[0 .. 1]
+doAssert match("aab", re"((a)*b)", m)
+doAssert m.group(0) == @[0 .. 2]
+doAssert m.group(1) == @[0 .. 0, 1 .. 1]
+
+doAssert "abcd".find(re"bc", m)
+doAssert "2222".find(re"(22)*", m)
+doAssert m.group(0) == @[0 .. 1, 2 .. 3]
+
+doAssert re"bc" in "abcd"
+doAssert re"(23)+" in "112323211"
+```
+
 ## Docs
 
 [Read the docs](https://nitely.github.io/nregex/)
