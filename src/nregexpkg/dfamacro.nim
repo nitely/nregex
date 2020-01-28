@@ -162,23 +162,50 @@ proc submatch(
   swap(smA, smB)
   smB.setLen(0)
 
+macro genEoeTable(
+  matched: bool,
+  q: int32,
+  regex: static Regex
+): untyped =
+  ## Generate Eoe table
+  result = newStmtList()
+  var caseStmtQ: seq[NimNode]
+  caseStmtQ.add(q)
+  for i, t in regex.dfa.table.pairs:
+    if symEoe in t:
+      let trueLit = newLit true
+      caseStmtQ.add(newTree(nnkOfBranch,
+        newLit i.int32,
+        quote do:
+          `matched` = `trueLit`))
+  doAssert caseStmtQ.len > 1
+  let falseLit = newLit false
+  caseStmtQ.add(newTree(nnkElse,
+    quote do:
+      `matched` = `falseLit`))
+  result.add(
+    newTree(nnkCaseStmt, caseStmtQ))
+  when defined(reDumpMacro):
+    echo "==== genEoeTable ===="
+    echo repr(result)
+
 macro genSymMatchTable(
   q, qnext, c, cSym: int32,
-  table: static seq[DfaRow]
+  regex: static Regex
 ): untyped =
   ## Generate symMatch transition table
   result = newStmtList()
   var caseStmtQ: seq[NimNode]
   caseStmtQ.add(q)
   var qBranches: seq[NimNode]
-  for i, t in table.pairs:
+  for i, t in regex.dfa.table.pairs:
     var symIfs: seq[NimNode]
     for sym in syms:
-      if sym notin table[i]:
+      if sym notin regex.dfa.table[i]:
         continue
       case sym:
       of symDigit:
-        let tLit = newLit table[i][symDigit]
+        let tLit = newLit regex.dfa.table[i][symDigit]
         let symLit = newLit symDigit
         symIfs.add(newTree(nnkElifBranch,
           quote do:
@@ -187,7 +214,7 @@ macro genSymMatchTable(
             `qnext` = `tLit`
             `cSym` = `symLit`))
       of symWord:
-        let tLit = newLit table[i][symWord]
+        let tLit = newLit regex.dfa.table[i][symWord]
         let symLit = newLit symWord
         symIfs.add(newTree(nnkElifBranch,
           quote do:
@@ -197,7 +224,7 @@ macro genSymMatchTable(
             `cSym` = `symLit`))
       of symAny:
         let lineBreakLit = newLit lineBreakRune.int32
-        let tLit = newLit table[i][symAny]
+        let tLit = newLit regex.dfa.table[i][symAny]
         let symLit = newLit symAny
         symIfs.add(newTree(nnkElifBranch,
           quote do:
@@ -206,7 +233,7 @@ macro genSymMatchTable(
             `qnext` = `tLit`
             `cSym` = `symLit`))
       of symAnyNl:
-        let tLit = newLit table[i][symAnyNl]
+        let tLit = newLit regex.dfa.table[i][symAnyNl]
         let symLit = newLit symAnyNl
         symIfs.add(newTree(nnkElifBranch,
           quote do:
@@ -239,12 +266,12 @@ macro genSymMatchTable(
 
 macro genTable(
   q, qnext, c: int32,
-  table: static seq[DfaRow]
+  regex: static Regex
 ): untyped =
   ## Generate transition table
   var caseStmtQ: seq[NimNode]
   caseStmtQ.add(q)
-  for i, t in table.pairs:
+  for i, t in regex.dfa.table.pairs:
     var caseStmtC: seq[NimNode]
     caseStmtC.add(c)
     for c2, t2 in t:
@@ -290,28 +317,29 @@ proc matchImpl*(
     qnext = 0'i32
     i = 0
   # workaround for https://github.com/nim-lang/Nim/issues/13252
-  const regex2 = regex
+  const hasTransionsZ = regex.transitions.z.len > 0
+  const groupCount = regex.groupsCount
   smA.add((0'i16, -1))
-  for r in text.runes:
+  for r in text:#.runes:
     c = r.int32
     cSym = c
-    genTable(q, qnext, c, regex.dfa.table)
+    genTable(q, qnext, c, regex)
     if (qnext == -1'i32).unlikely:
       # XXX when no ascii mode
-      genSymMatchTable(q, qnext, c, cSym, regex.dfa.table)
+      genSymMatchTable(q, qnext, c, cSym, regex)
       if (qnext == -1'i32).unlikely:
         return
-    when regex2.transitions.z.len > 0:
+    when hasTransionsZ:
       submatch(smA, smB, capts, regex, i, q, cSym, cPrev, c)
     q = qnext
     cPrev = r.int32
     inc i
-  result = symEoe in regex2.dfa.table[q]
-  when regex2.transitions.z.len > 0:
+  genEoeTable(result, q, regex)
+  when hasTransionsZ:
     if not result:
       return
     submatch(smA, smB, capts, regex, i, q, symEoe, cPrev, symEoe)
     if smA.len == 0:
       result = false
       return
-    constructSubmatches(captures, capts, smA[0][1], regex2.groupsCount)
+    constructSubmatches(captures, capts, smA[0][1], groupCount)
