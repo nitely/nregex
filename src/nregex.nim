@@ -217,6 +217,7 @@ proc find*(
 
 when isMainModule:
   var m: RegexMatch
+
   doAssert match("abc", re"abc", m)
   doAssert match("ab", re"a(b|c)", m)
   doAssert match("ac", re"a(b|c)", m)
@@ -233,7 +234,7 @@ when isMainModule:
   doAssert not match("cac", re"c\ba\bc", m)
   doAssert match("abc", re"[abc]+", m)
   doAssert match("abc", re"[\w]+", m)
-  doAssert match("弢弢弢", re"[\w]+", m) 
+  doAssert match("弢弢弢", re"[\w]+", m)
   doAssert not match("abc", re"[\d]+", m)
   doAssert match("123", re"[\d]+", m)
   doAssert match("abc$%&", re".+", m)
