@@ -13,8 +13,7 @@ import dfa
 macro genClosureTable(
   q, cSym: int32,
   nt: int16,
-  cs: static seq[Closure],
-  closures: static seq[DfaClosure]
+  regex: static Regex
 ): untyped =
   #[
   case q:  # curr state
@@ -29,11 +28,11 @@ macro genClosureTable(
     else: false
   else: false
   ]#
-  doAssert cs.len > 0
+  doAssert regex.dfa.cs.len > 0
   result = newStmtList()
   var caseStmtQ: seq[NimNode]
   caseStmtQ.add(q)
-  for i, t in closures.pairs:
+  for i, t in regex.dfa.closures.pairs:
     if t.len == 0:  # end state
       continue
     var caseStmtC: seq[NimNode]
@@ -41,7 +40,7 @@ macro genClosureTable(
     for c2, t2 in t:
       var caseStmtNt: seq[NimNode]
       caseStmtNt.add(nt)
-      for s in cs[t2]:
+      for s in regex.dfa.cs[t2]:
         caseStmtNt.add(newTree(nnkOfBranch,
           newLit s.int16,
           quote do:
@@ -71,35 +70,32 @@ macro genClosureTable(
 proc inClosure(
   q, cSym: int32,
   nt: int16,
-  cs: static seq[Closure],
-  closures: static seq[DfaClosure]
+  regex: static Regex
 ): bool =
-  genClosureTable(q, cSym, nt, cs, closures)
+  genClosureTable(q, cSym, nt, regex)
 
 macro genSubmatch(
   q, n, c, cSym, cPrev, capt, captx, charIndex, matched, smB, capts: typed,
-  transitions, transitionsZ: static TransitionsAll,
-  zClosure: static ZclosureStates,
-  cs, closures: typed
+  regex: static Regex
 ): untyped =
   result = newStmtList()
   var caseStmtN: seq[NimNode]
   caseStmtN.add(n)
-  for i, t in transitions.pairs:
+  for i, t in regex.transitions.all.pairs:
     if t.len == 0:  # end state
       continue
     var branchBodyN: seq[NimNode]
     for nti, nt in t.pairs:
       let ntLit = newLit nt.int16
       var inClosureBranch: seq[NimNode]
-      if transitionsZ[i][nti] == -1'i16:
+      if regex.transitions.allZ[i][nti] == -1'i16:
         inClosureBranch.add(quote do:
           add(`smB`, (`ntLit`, `capt`)))
       else:
         inClosureBranch.add(quote do:
           `matched` = true
           `captx` = `capt`)
-        for z in zClosure[transitionsZ[i][nti]]:
+        for z in regex.transitions.z[regex.transitions.allZ[i][nti]]:
           case z.kind
           of groupKind:
             let zIdx = newLit z.idx
@@ -121,17 +117,10 @@ macro genSubmatch(
           if `matched`:
             add(`smB`, (`ntLit`, `captx`)))
       doAssert inClosureBranch.len > 0
-      # XXX table error, report this
-      #branchBodyN.add(quote do:
-      #  if inClosure(`q`, `cSym`, `ntLit`, `cs`, `closures`):
-      #    `inClosureBranch`)
-      branchBodyN.add(newTree(nnkIfStmt,
-        newTree(nnkElifBranch,
-          newCall(
-            bindSym"inClosure",
-            q, cSym, ntLit, cs, closures),
-          newStmtList(
-            inClosureBranch))))
+      let inClosureBranchStmt = newStmtList inClosureBranch
+      branchBodyN.add(quote do:
+        if inClosure(`q`, `cSym`, `ntLit`, regex):
+          `inClosureBranchStmt`)
     doAssert branchBodyN.len > 0
     caseStmtN.add(newTree(nnkOfBranch,
       newLit i.int16,
@@ -156,9 +145,7 @@ proc submatch(
   var matched = true
   for n, capt in smA.items:
     genSubmatch(
-      q, n, c, cSym, cPrev, capt, captx, i, matched, smB, capts,
-      regex.transitions.all, regex.transitions.allZ,
-      regex.transitions.z, regex.dfa.cs, regex.dfa.closures)
+      q, n, c, cSym, cPrev, capt, captx, i, matched, smB, capts, regex)
   swap(smA, smB)
   smB.setLen(0)
 
@@ -320,7 +307,7 @@ proc matchImpl*(
   const hasTransionsZ = regex.transitions.z.len > 0
   const groupCount = regex.groupsCount
   smA.add((0'i16, -1))
-  for r in text:#.runes:
+  for r in text.runes:
     c = r.int32
     cSym = c
     genTable(q, qnext, c, regex)
