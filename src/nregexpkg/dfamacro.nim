@@ -88,7 +88,7 @@ macro genSubmatch(
             let zIdx = newLit z.idx
             inClosureBranch.add(quote do:
               add(`capts`, CaptNode(parent: `captx`, bound: `charIndex`, idx: `zIdx`))
-              `captx` = len(`capts`) - 1)
+              `captx` = (len(`capts`) - 1).int32)
           of assertionKind:
             # https://github.com/nim-lang/Nim/issues/13266
             #let zLit = newLit z
@@ -128,7 +128,7 @@ proc submatch(
   i: int,
   qt, cprev, c: int32
 ) {.inline.} =
-  var captx: int
+  var captx: int32
   var matched = true
   for n, capt in smA.items:
     genSubmatch(
@@ -290,7 +290,7 @@ proc matchImpl*(
 ): bool {.inline.} =
   result = false
   var
-    smA: Submatches
+    smA {.used.}: Submatches
     smB {.used.}: Submatches
     capts {.used.}: Capts
     cPrev = -1'i32
@@ -302,7 +302,8 @@ proc matchImpl*(
   # workaround for https://github.com/nim-lang/Nim/issues/13252
   const hasTransionsZ = regex.transitions.z.len > 0
   const groupCount {.used.} = regex.groupsCount
-  smA.add((0'i16, -1))
+  when hasTransionsZ:
+    smA.add((0'i16, -1'i32))
   for r in text.runes:
     c = r.int32
     qOld = q

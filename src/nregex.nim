@@ -11,7 +11,6 @@ import nregexpkg/dfamacro
 type
   Regex* = dfa.Regex
     ## a compiled regular expression
-type
   RegexMatch* = object
     ## result from matching operations
     captures: Captures

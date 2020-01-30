@@ -169,8 +169,40 @@ proc constructSubmatches*(
 
 type
   NodeIdx = int16
-  CaptIdx = int
+  CaptIdx = int32
   Submatches* = seq[(NodeIdx, CaptIdx)]
+
+# XXX using a seq for Submatches is the current bottleck,
+#     using an array makes things 5x times faster, however,
+#     due to https://github.com/nim-lang/Nim/issues/12747
+#     an array larger than 4 is slow. Once that issue is solved
+#     it would be nice if Submatches would use an array until
+#     its size is exceeded (should be rare for an array of size 128),
+#     then fallback to a seq
+#[
+  Submatches* = object
+    s: array[4, (NodeIdx, CaptIdx)]
+    i: int8
+
+iterator items*(sm: Submatches): (NodeIdx, CaptIdx) {.inline.} =
+  var i = 0
+  while i < sm.i:
+    yield sm.s[i]
+    inc i
+
+proc `[]`*(sm: Submatches, i: int): (NodeIdx, CaptIdx) {.inline.} =
+  result = sm.s[i]
+
+proc setLen*(sm: var Submatches, i: int8) {.inline.} =
+  sm.i = i
+
+proc add*(sm: var Submatches, item: (NodeIdx, CaptIdx)) {.inline.} =
+  sm.s[sm.i] = item
+  inc sm.i
+
+proc len*(sm: Submatches): int {.inline.} =
+  result = sm.i
+]#
 
 proc submatch(
   smA, smB: var Submatches,
@@ -181,7 +213,7 @@ proc submatch(
   cprev, c: int32
 ) {.inline.} =
   smB.setLen(0)
-  var captx: int
+  var captx: int32
   var matched = true
   for n, capt in smA.items:
     for nti, nt in transitions.all[n].pairs:
@@ -201,7 +233,7 @@ proc submatch(
             parent: captx,
             bound: i,
             idx: z.idx))
-          captx = capts.len-1
+          captx = (capts.len-1'i32).int32
         of assertionKind:
           matched = match(z, cprev.Rune, c.Rune)
         of matchTransitionKind:
@@ -313,7 +345,7 @@ proc matchImpl*(
     # Long match
     matchedLong {.used.} = false
     captLong {.used.} = -1
-  smA.add((0'i16, -1))
+  smA.add((0'i16, -1'i32))
   #echo regex.dfa
   while i < len(text):
     fastRuneAt(text, i, c, true)
