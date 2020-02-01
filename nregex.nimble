@@ -15,15 +15,12 @@ task test, "Test":
   exec "nim c -r src/nregex.nim"
   exec "nim c -r tests/tests.nim"
   exec "nim c -r -d:forceRegexAtRuntime tests/tests.nim"
-  when (NimMajor, NimMinor, NimPatch) >= (0, 20, 0):
-    exec "nim c -d:runTestAtCT tests/tests.nim"
-  # js target should work in older versions, but
-  # the docker image for CI has it since Nim 1.0.4,
-  # so I'll only test it there
-  when (NimMajor, NimMinor, NimPatch) >= (1, 0, 4):
-    exec "nim js -r --styleCheck:off src/nregex.nim"
-    exec "nim js -r --styleCheck:off tests/tests.nim"
-    exec "nim js -r --styleCheck:off -d:forceRegexAtRuntime tests/tests.nim"
+  # VM register limit error, works on devel,
+  # well almost due to https://github.com/nim-lang/Nim/issues/13310
+  #exec "nim c -d:runTestAtCT tests/tests.nim"
+  exec "nim js -r --styleCheck:off src/nregex.nim"
+  exec "nim js -r --styleCheck:off tests/tests.nim"
+  exec "nim js -r --styleCheck:off -d:forceRegexAtRuntime tests/tests.nim"
 
   # Test runnable examples
   exec "nim doc -o:./docs/ugh/ugh.html ./src/nregex.nim"
