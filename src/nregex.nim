@@ -2,12 +2,12 @@ import tables
 import sequtils
 import unicode
 
-import nregexpkg/common
-import nregexpkg/parser
-import nregexpkg/exptransformation
-import nregexpkg/nfa
-import nregexpkg/dfa
-import nregexpkg/dfamacro
+import nregex/common
+import nregex/parser
+import nregex/exptransformation
+import nregex/nfa
+import nregex/dfa
+import nregex/dfamacro
 
 type
   Regex* = dfa.Regex

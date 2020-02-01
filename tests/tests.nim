@@ -7,7 +7,10 @@ template test(desc: string, body: untyped): untyped =
       block:
         body
   else:
-    echo "[RT] " & desc
+    when defined(forceRegexAtRuntime):
+      echo "[RT] " & desc
+    else:
+      echo "[CT/RT] " & desc
     block:
       body
 
