@@ -163,9 +163,11 @@ proc teClosure(
     return
   visited.incl(state)
   var zTransitionsCurr = zTransitions
-  if nfa[state].kind in groupKind + assertionKind:
+  if nfa[state].kind in groupKind and nfa[state].isCapturing:
     zTransitionsCurr.add(state)
-  if nfa[state].kind in {reInSet, reNotSet}:  # XXX don't do this in ascii mode
+  if nfa[state].kind in assertionKind:
+    zTransitionsCurr.add(state)
+  if nfa[state].kind == reInSet:  # XXX don't do this in ascii mode
     # XXX skip if subset of {reAny, reAnyNl, reDigit, reWord} for reInSet
     if nfa[state].shorthands.len > 0:
       zTransitionsCurr.add(state)
@@ -255,7 +257,12 @@ proc eRemoval(
     if nn == -1:
       continue
     result[nn] = case eNfa[en].kind
-      of matchTransitionKind:
+      of reInSet:
+        if eNfa[en].shorthands.len > 0:
+          Node(kind: reAnyNl, cp: "#".toRune)
+        else:
+          eNfa[en]
+      of matchTransitionKind - {reInSet}:
         Node(kind: reAnyNl, cp: "#".toRune)
       else:
         eNfa[en]

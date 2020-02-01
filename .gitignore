@@ -1,4 +1,6 @@
 nimcache/
 src/nregex
+src/nregex.js
 tests/tests
+tests/tests.js
 docs/ugh

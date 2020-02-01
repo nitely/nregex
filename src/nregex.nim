@@ -2,6 +2,7 @@ import tables
 import sequtils
 import unicode
 
+import nregexpkg/common
 import nregexpkg/parser
 import nregexpkg/exptransformation
 import nregexpkg/nfa
@@ -11,11 +12,10 @@ import nregexpkg/dfamacro
 type
   Regex* = dfa.Regex
     ## a compiled regular expression
-  RegexMatch* = object
-    ## result from matching operations
-    captures: Captures
-    namedGroups: OrderedTable[string, int16]
-    boundaries*: Slice[int]
+  RegexMatch* = dfa.RegexMatch
+  RegexError* = common.RegexError
+    ## raised when the pattern
+    ## is not a valid regex
 
 template reImpl(s: untyped): Regex =
   var groups: GroupsCapture
@@ -34,8 +34,9 @@ template reImpl(s: untyped): Regex =
 proc re*(s: string): Regex =
   reImpl(s)
 
-proc re*(s: static string): static Regex =
-  reImpl(s)
+when not defined(forceRegexAtRuntime):
+  proc re*(s: static string): static Regex =
+    reImpl(s)
 
 iterator group*(m: RegexMatch, i: int): Slice[int] =
   ## return slices for a given group.
@@ -140,31 +141,37 @@ proc groupLastCapture*(m: RegexMatch, groupName: string, text: string): string =
   else:
     return "" 
 
-proc clear(m: var RegexMatch) {.inline.} =
-  if m.captures.len > 0:
-    m.captures.setLen(0)
-  if m.namedGroups.len > 0:
-    m.namedGroups.clear()
-  m.boundaries = 0 .. -1
-
-proc match*(
-  s: string,
-  pattern: static Regex,
-  m: var RegexMatch,
-  start = 0
-): bool =
-  ## return a match if the whole string
-  ## matches the regular expression. This
-  ## is similar to ``find(text, re"^regex$")``
-  ## but has better performance
+proc isInitialized*(re: Regex): bool =
+  ## Check whether the regex has been initialized
   runnableExamples:
-    var m: RegexMatch
-    doAssert "abcd".match(re"abcd", m)
-    doAssert(not "abcd".match(re"abc", m))
+    var re: Regex
+    doAssert not re.isInitialized
+    re = re"foo"
+    doAssert re.isInitialized
 
-  m.clear()
-  const f: MatchFlags = {}
-  result = matchImpl(s, pattern, m.captures, f, start)
+  re.dfa.table.len > 0
+
+when not defined(forceRegexAtRuntime):
+  proc match*(
+    s: string,
+    pattern: static Regex,
+    m: var RegexMatch,
+    start = 0
+  ): bool =
+    ## return a match if the whole string
+    ## matches the regular expression. This
+    ## is similar to ``find(text, re"^regex$")``
+    ## but has better performance
+    runnableExamples:
+      var m: RegexMatch
+      doAssert "abcd".match(re"abcd", m)
+      doAssert(not "abcd".match(re"abc", m))
+
+    when pattern.namedGroups.len > 0:
+      const namedGroups = pattern.namedGroups
+      m.namedGroups = namedGroups
+    const f: MatchFlags = {}
+    result = matchImpl(s, pattern, m, f, start)
 
 proc match*(
   s: string,
@@ -172,9 +179,8 @@ proc match*(
   m: var RegexMatch,
   start = 0
 ): bool =
-  m.clear()
   const f: MatchFlags = {}
-  result = matchImpl(s, pattern, m.captures, f, start)
+  result = matchImpl(s, pattern, m, f, start)
 
 proc contains*(s: string, pattern: Regex): bool =
   ##  search for the pattern anywhere
@@ -189,11 +195,11 @@ proc contains*(s: string, pattern: Regex): bool =
     doAssert(re"^(23)+$" notin "23232")
 
   result = false
-  var capts: Captures
+  var m: RegexMatch
   var i = 0
   var c: Rune
   while i < len(s):
-    result = matchImpl(s, pattern, capts, {mfShortestMatch}, i)
+    result = matchImpl(s, pattern, m, {mfShortestMatch}, i)
     if result:
       break
     fastRuneAt(s, i, c, true)
@@ -208,8 +214,7 @@ proc find*(
   var i = start
   var c: Rune
   while i < len(s):
-    m.clear()
-    result = matchImpl(s, pattern, m.captures, {mfLongestMatch}, i)
+    result = matchImpl(s, pattern, m, {mfLongestMatch}, i)
     if result:
       break
     fastRuneAt(s, i, c, true)
@@ -308,3 +313,11 @@ when isMainModule:
   doAssert(
     "11222211".find(re"(22)+", m) and
     m.group(0) == @[2 .. 3, 4 .. 5])
+  
+  doAssert match("650-253-0001", re"[0-9]+-[0-9]+-[0-9]+", m)
+  doAssert not match("abc-253-0001", re"[0-9]+-[0-9]+-[0-9]+", m)
+  doAssert not match("650-253", re"[0-9]+-[0-9]+-[0-9]+", m)
+  doAssert not match("650-253-0001-abc", re"[0-9]+-[0-9]+-[0-9]+", m)
+  doAssert match("650-253-0001", re"[0-9]+..*", m)
+  doAssert not match("abc-253-0001", re"[0-9]+..*", m)
+  doAssert not match("6", re"[0-9]+..*", m)

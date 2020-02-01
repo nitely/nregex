@@ -114,6 +114,8 @@ proc dfa*(nfa: seq[Node]): Dfa =
   var quPos = 0'i32
   qu[q0] = quPos
   inc quPos
+  result.table.add(initTable[AlphabetSym, int32](2))
+  result.closures.add(initTable[AlphabetSym, int32](2))
   while qw.len > 0:
     let qa = qw.popLast()
     for sym in alphabet:
@@ -126,7 +128,6 @@ proc dfa*(nfa: seq[Node]): Dfa =
         qu[t] = quPos
         inc quPos
         qw.addFirst(t)
-      if qu[qa] >= result.table.len-1:
         result.table.add(initTable[AlphabetSym, int32](2))
         result.closures.add(initTable[AlphabetSym, int32](2))
       result.table[qu[qa]][sym] = qu[t]
@@ -257,6 +258,18 @@ type
     mfLongestMatch
     mfNoCaptures
   MatchFlags* = set[MatchFlag]
+  RegexMatch* = object
+    ## result from matching operations
+    captures*: Captures
+    namedGroups*: OrderedTable[string, int16]
+    boundaries*: Slice[int]
+
+proc clear*(m: var RegexMatch) {.inline.} =
+  if m.captures.len > 0:
+    m.captures.setLen(0)
+  if m.namedGroups.len > 0:
+    m.namedGroups.clear()
+  m.boundaries = 0 .. -1
 
 # Order matters, subsets first
 const syms* = [
@@ -293,7 +306,8 @@ proc symMatch(
 # Can't return early because of boundaries
 template longestMatchEnter() {.dirty.} =
   if symEoe in regex.dfa.table[q]:
-    matchedLong = true  # xxx remove, use boundaries
+    matchedLong = true
+    iPrevLong = iPrev
     if regex.transitions.z.len > 0:
       submatch(
         smA, smB, capts, regex.transitions,
@@ -305,7 +319,10 @@ template longestMatchEnter() {.dirty.} =
 template longestMatchExit() {.dirty.} =
   result = matchedLong
   if regex.transitions.z.len > 0:
-    constructSubmatches(captures, capts, captLong, regex.groupsCount)
+    constructSubmatches(m.captures, capts, captLong, regex.groupsCount)
+    if regex.namedGroups.len > 0:
+      m.namedGroups = regex.namedGroups
+  m.boundaries = start .. iPrevLong-1
   return
 
 template shortestMatch() {.dirty.} =
@@ -325,11 +342,12 @@ template shortestMatch() {.dirty.} =
 proc matchImpl*(
   text: string,
   regex: Regex,
-  captures: var Captures,
+  m: var RegexMatch,
   flags: static MatchFlags,
   start = 0
 ): bool {.inline.} =
   #echo dfa
+  m.clear()
   result = false
   var
     smA: Submatches
@@ -345,7 +363,9 @@ proc matchImpl*(
     # Long match
     matchedLong {.used.} = false
     captLong {.used.} = -1
-  smA.add((0'i16, -1'i32))
+    iPrevLong {.used.} = start
+  if regex.transitions.z.len > 0:
+    smA.add((0'i16, -1'i32))
   #echo regex.dfa
   while i < len(text):
     fastRuneAt(text, i, c, true)
@@ -373,13 +393,19 @@ proc matchImpl*(
     #echo q
   result = symEoe in regex.dfa.table[q]
   if not result:
+    when mfLongestMatch in flags:
+      longestMatchExit()
     return
-  if regex.transitions.z.len == 0:
-    return
-  submatch(
-    smA, smB, capts, regex.transitions,
-    regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, -1'i32)
-  if smA.len == 0:
-    result = false
-    return
-  constructSubmatches(captures, capts, smA[0][1], regex.groupsCount)
+  if regex.transitions.z.len > 0:
+    submatch(
+      smA, smB, capts, regex.transitions,
+      regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, -1'i32)
+    if smA.len == 0:  # XXX is this possible?
+      when mfLongestMatch in flags:
+        longestMatchExit()
+      result = false
+      return
+    constructSubmatches(m.captures, capts, smA[0][1], regex.groupsCount)
+    if regex.namedGroups.len > 0:
+      m.namedGroups = regex.namedGroups
+  m.boundaries = start .. iPrev-1

@@ -1,5 +1,6 @@
 import sets
 import tables
+import unicode
 import macros
 
 import unicodeplus except isUpper, isLower
@@ -93,11 +94,11 @@ macro genSubmatch(
             # https://github.com/nim-lang/Nim/issues/13266
             #let zLit = newLit z
             inClosureBranch.add(quote do:
-              `matched` = match(`z`, Rune(`cPrev`), Rune(`c`)))
+              `matched` = `matched` and match(`z`, Rune(`cPrev`), Rune(`c`)))
           of matchTransitionKind:
             #let zLit = newLit z
             inClosureBranch.add(quote do:
-              `matched` = match(`z`, Rune(`c`)))
+              `matched` = `matched` and match(`z`, Rune(`c`)))
           else:
             doAssert false
         inClosureBranch.add(quote do:
@@ -232,14 +233,18 @@ macro genSymMatchTable(
         newLit i.int32,
         newStmtList(
           newTree(nnkIfStmt, symIfs))))
+  let tLit = newLit -1'i32
   if qBranches.len > 0:
-    let tLit = newLit -1'i32
     caseStmtQ.add(qBranches)
     caseStmtQ.add(newTree(nnkElse,
       quote do:
         `q` = `tLit`
         `qt` = `tLit`))
     result.add(newTree(nnkCaseStmt, caseStmtQ))
+  else:
+    result.add(quote do:
+      `q` = `tLit`
+      `qt` = `tLit`)
   when defined(reDumpMacro):
     echo "==== genSymMatchTable ===="
     echo repr(result)
@@ -280,50 +285,59 @@ macro genTable(
     echo "==== genTable ===="
     echo repr(result)
 
-# x10 times faster than matchImpl
 proc matchImpl*(
   text: string,
   regex: static Regex,
-  captures: var Captures,
+  m: var RegexMatch,
   flags: static MatchFlags,
   start = 0
 ): bool {.inline.} =
+  m.clear()
   result = false
   var
     smA {.used.}: Submatches
     smB {.used.}: Submatches
     capts {.used.}: Capts
     cPrev = -1'i32
-    c: int32
+    c: Rune
     q = 0'i32
     qOld = q
     qt = q
-    i = 0
+    i = start
+    iPrev = start
   # workaround for https://github.com/nim-lang/Nim/issues/13252
-  const hasTransionsZ = regex.transitions.z.len > 0
-  const groupCount {.used.} = regex.groupsCount
+  const
+    hasTransionsZ = regex.transitions.z.len > 0
+    groupCount {.used.} = regex.groupsCount
+    namedGroups {.used.} = regex.namedGroups
   when hasTransionsZ:
     smA.add((0'i16, -1'i32))
-  for r in text.runes:
-    c = r.int32
+  while i < len(text):
+    # XXX when no ascii mode
+    fastRuneAt(text, i, c, true)
+    #c = text[i].Rune
+    #inc i
     qOld = q
-    genTable(q, qt, c, regex)
+    genTable(q, qt, c.int32, regex)
     if (q == -1'i32).unlikely:
       # XXX when no ascii mode
       q = qOld
-      genSymMatchTable(q, qt, c, regex)
+      genSymMatchTable(q, qt, c.int32, regex)
       if (q == -1'i32).unlikely:
         return
     when hasTransionsZ:
-      submatch(smA, smB, capts, regex, i, qt, cPrev, c)
-    cPrev = r.int32
-    inc i
+      submatch(smA, smB, capts, regex, iPrev, qt, cPrev, c.int32)
+    iPrev = i
+    cPrev = c.int32
   genEoeTable(result, q, qt, regex)
   when hasTransionsZ:
     if not result:
       return
-    submatch(smA, smB, capts, regex, i, qt, cPrev, symEoe)
+    submatch(smA, smB, capts, regex, iPrev, qt, cPrev, symEoe)
     if smA.len == 0:
       result = false
       return
-    constructSubmatches(captures, capts, smA[0][1], groupCount)
+    constructSubmatches(m.captures, capts, smA[0][1], groupCount)
+    when namedGroups.len > 0:
+      m.namedGroups = namedGroups
+  m.boundaries = start .. iPrev-1
