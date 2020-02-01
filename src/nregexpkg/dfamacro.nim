@@ -315,7 +315,7 @@ proc matchImpl*(
   while i < len(text):
     # XXX when no ascii mode
     fastRuneAt(text, i, c, true)
-    #c = text[i].Rune
+    #c = Rune(text[i])
     #inc i
     qOld = q
     genTable(q, qt, c.int32, regex)

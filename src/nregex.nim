@@ -31,11 +31,11 @@ template reImpl(s: untyped): Regex =
     groupsCount: groups.count,
     namedGroups: groups.names)
 
-proc re*(s: string): Regex =
+proc re*(s: string): Regex {.inline.} =
   reImpl(s)
 
 when not defined(forceRegexAtRuntime):
-  proc re*(s: static string): static Regex =
+  proc re*(s: static string): static Regex {.inline.} =
     reImpl(s)
 
 iterator group*(m: RegexMatch, i: int): Slice[int] =
@@ -141,7 +141,7 @@ proc groupLastCapture*(m: RegexMatch, groupName: string, text: string): string =
   else:
     return "" 
 
-proc isInitialized*(re: Regex): bool =
+proc isInitialized*(re: Regex): bool {.inline.} =
   ## Check whether the regex has been initialized
   runnableExamples:
     var re: Regex
@@ -157,7 +157,7 @@ when not defined(forceRegexAtRuntime):
     pattern: static Regex,
     m: var RegexMatch,
     start = 0
-  ): bool =
+  ): bool {.inline.} =
     ## return a match if the whole string
     ## matches the regular expression. This
     ## is similar to ``find(text, re"^regex$")``
@@ -178,11 +178,11 @@ proc match*(
   pattern: Regex,
   m: var RegexMatch,
   start = 0
-): bool =
+): bool {.inline.} =
   const f: MatchFlags = {}
   result = matchImpl(s, pattern, m, f, start)
 
-proc contains*(s: string, pattern: Regex): bool =
+proc contains*(s: string, pattern: Regex): bool {.inline.} =
   ##  search for the pattern anywhere
   ##  in the string. It returns as soon
   ##  as there is a match, even when the
@@ -209,7 +209,7 @@ proc find*(
   pattern: Regex,
   m: var RegexMatch,
   start = 0
-): bool =
+): bool {.inline.} =
   result = false
   var i = start
   var c: Rune

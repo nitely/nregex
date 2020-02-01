@@ -43,15 +43,15 @@ doAssert re"(23)+" in "112323211"
 
 ## Benchmarks
 
-The following benchmarks show nregex is up to 14 times faster than PCRE. However, when the RE contains capture groups, PCRE is about 4 times faster than nregex.
+The following benchmarks show nregex is up to 22 times faster than PCRE. However, when the RE contains capture groups, PCRE is about 4 times faster than nregex.
 
 |  | relative | time/iter | iters/s | regex | text
 | --- | --- | --- | --- | --- | ---
 CPU | | 294.85ps | 3.39G
 PCRE | | 1.10ms | 912.11 | ^\w\*sol\w\*$ | (a\*100000)sol(b\*100000)
 nregex | 739.52% | 148.25us | 6.75K
-PCRE | | 158.97ns | 6.29M | ^[0-9]+-[0-9]+-[0-9]+$ | 650-253-0001
-nregex | 1244.05% | 12.78ns | 78.26M
+PCRE | | 174.87ns | 5.72M | ^[0-9]+-[0-9]+-[0-9]+$ | 650-253-0001
+nregex | 2280.84% | 7.67ns | 130.43M
 PCRE | | 179.23ns | 5.58M | ^[0-9]+..+$ | 650-253-0001
 nregex | 1447.15% | 12.38ns | 80.74M
 
