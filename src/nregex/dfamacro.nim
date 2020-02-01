@@ -55,7 +55,7 @@ macro genClosureTable(
     echo "==== genClosureTable ===="
     echo repr(result)
 
-proc inClosure(
+func inClosure(
   qt: int32,
   nt: int16,
   regex: static Regex
@@ -122,7 +122,7 @@ macro genSubmatch(
     echo "==== genSubmatch ===="
     echo repr(result)
 
-proc submatch(
+func submatch(
   smA, smB: var Submatches,
   capts: var Capts,
   regex: static Regex,
@@ -285,7 +285,7 @@ macro genTable(
     echo "==== genTable ===="
     echo repr(result)
 
-proc matchImpl*(
+func matchImpl*(
   text: string,
   regex: static Regex,
   m: var RegexMatch,

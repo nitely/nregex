@@ -35,21 +35,21 @@ iterator mitems*[T](sc: var Scanner[T]): var T =
     inc sc.pos
     yield sc.s[sc.pos - 1]
 
-proc finished*[T](sc: Scanner[T]): bool =
+func finished*[T](sc: Scanner[T]): bool =
   sc.pos > sc.s.high
 
-proc prev*[T](sc: Scanner[T]): T =
+func prev*[T](sc: Scanner[T]): T =
   sc.s[sc.pos - 1]
 
-proc curr*[T](sc: Scanner[T]): T =
+func curr*[T](sc: Scanner[T]): T =
   sc.s[sc.pos]
 
-proc next*[T](sc: Scanner[T]): T =
+func next*[T](sc: Scanner[T]): T =
   ## return current item and consume it
   result = sc.s[sc.pos]
   inc sc.pos
 
-proc peekImpl[T](sc: Scanner[T], default: T): T {.inline.} =
+func peekImpl[T](sc: Scanner[T], default: T): T {.inline.} =
   ## same as ``curr`` except it
   ## returns a default/invalid value when
   ## the data is fully consumed
@@ -58,17 +58,17 @@ proc peekImpl[T](sc: Scanner[T], default: T): T {.inline.} =
   else:
     sc.s[sc.pos]
 
-proc peek*(sc: Scanner[Rune]): Rune =
+func peek*(sc: Scanner[Rune]): Rune =
   peekImpl(sc, invalidRune)
 
-proc peek*(sc: Scanner[Node]): Node =
+func peek*(sc: Scanner[Node]): Node =
   peekImpl(sc, initEOENode())
 
 iterator peek*[T](sc: Scanner[T]): (T, T) =
   for s in sc:
     yield (s, sc.peek)
 
-proc find*(sc: Scanner[Rune], r: Rune): int =
+func find*(sc: Scanner[Rune], r: Rune): int =
   ## return number of consumed chars.
   ## The scanner's position is not moved.
   ## ``-1`` is returned when char is not found

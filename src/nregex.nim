@@ -31,11 +31,11 @@ template reImpl(s: untyped): Regex =
     groupsCount: groups.count,
     namedGroups: groups.names)
 
-proc re*(s: string): Regex {.inline.} =
+func re*(s: string): Regex {.inline.} =
   reImpl(s)
 
 when not defined(forceRegexAtRuntime):
-  proc re*(s: static string): static Regex {.inline.} =
+  func re*(s: static string): static Regex {.inline.} =
     reImpl(s)
 
 iterator group*(m: RegexMatch, i: int): Slice[int] =
@@ -55,7 +55,7 @@ iterator group*(m: RegexMatch, i: int): Slice[int] =
   for capt in m.captures[i]:
     yield capt
 
-proc group*(m: RegexMatch, i: int): seq[Slice[int]] =
+func group*(m: RegexMatch, i: int): seq[Slice[int]] =
   ## return slices for a given group.
   ## Use the iterator version if you care about performance
   m.captures[i]
@@ -74,12 +74,12 @@ iterator group*(m: RegexMatch, s: string): Slice[int] =
   for bounds in m.group(m.namedGroups[s]):
     yield bounds
 
-proc group*(m: RegexMatch, s: string): seq[Slice[int]] =
+func group*(m: RegexMatch, s: string): seq[Slice[int]] =
   ## return slices for a given named group.
   ## Use the iterator version if you care about performance
   m.group(m.namedGroups[s])
 
-proc groupsCount*(m: RegexMatch): int =
+func groupsCount*(m: RegexMatch): int =
   ## return the number of capturing groups
   runnableExamples:
     var m: RegexMatch
@@ -88,7 +88,7 @@ proc groupsCount*(m: RegexMatch): int =
 
   m.captures.len
 
-proc groupNames*(m: RegexMatch): seq[string] =
+func groupNames*(m: RegexMatch): seq[string] =
   ## return the names of capturing groups.
   runnableExamples:
     let text = "hello world"
@@ -98,7 +98,7 @@ proc groupNames*(m: RegexMatch): seq[string] =
 
   result = toSeq(m.namedGroups.keys)
 
-proc group*(m: RegexMatch, groupName: string, text: string): seq[string] = 
+func group*(m: RegexMatch, groupName: string, text: string): seq[string] = 
   ## return seq of captured text by group `groupName`
   runnableExamples:
     let text = "hello beautiful world"
@@ -111,7 +111,7 @@ proc group*(m: RegexMatch, groupName: string, text: string): seq[string] =
   for bounds in m.group(groupName):
     result.add text[bounds]
 
-proc groupFirstCapture*(m: RegexMatch, groupName: string, text: string): string =
+func groupFirstCapture*(m: RegexMatch, groupName: string, text: string): string =
   ##  Return fist capture for a given capturing group
   runnableExamples:
     let text = "hello beautiful world"
@@ -126,7 +126,7 @@ proc groupFirstCapture*(m: RegexMatch, groupName: string, text: string): string 
   else:
     return "" 
 
-proc groupLastCapture*(m: RegexMatch, groupName: string, text: string): string =
+func groupLastCapture*(m: RegexMatch, groupName: string, text: string): string =
   ##  Return last capture for a given capturing group
   runnableExamples:
     let text = "hello beautiful world"
@@ -141,7 +141,7 @@ proc groupLastCapture*(m: RegexMatch, groupName: string, text: string): string =
   else:
     return "" 
 
-proc isInitialized*(re: Regex): bool {.inline.} =
+func isInitialized*(re: Regex): bool {.inline.} =
   ## Check whether the regex has been initialized
   runnableExamples:
     var re: Regex
@@ -152,7 +152,7 @@ proc isInitialized*(re: Regex): bool {.inline.} =
   re.dfa.table.len > 0
 
 when not defined(forceRegexAtRuntime):
-  proc match*(
+  func match*(
     s: string,
     pattern: static Regex,
     m: var RegexMatch,
@@ -173,7 +173,7 @@ when not defined(forceRegexAtRuntime):
     const f: MatchFlags = {}
     result = matchImpl(s, pattern, m, f, start)
 
-proc match*(
+func match*(
   s: string,
   pattern: Regex,
   m: var RegexMatch,
@@ -182,7 +182,7 @@ proc match*(
   const f: MatchFlags = {}
   result = matchImpl(s, pattern, m, f, start)
 
-proc contains*(s: string, pattern: Regex): bool {.inline.} =
+func contains*(s: string, pattern: Regex): bool {.inline.} =
   ##  search for the pattern anywhere
   ##  in the string. It returns as soon
   ##  as there is a match, even when the
@@ -204,7 +204,7 @@ proc contains*(s: string, pattern: Regex): bool {.inline.} =
       break
     fastRuneAt(s, i, c, true)
 
-proc find*(
+func find*(
   s: string,
   pattern: Regex,
   m: var RegexMatch,

@@ -29,7 +29,7 @@ const
   symAny* = -6'i32
   symAnyNl* = -7'i32
 
-proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
+func createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
   var inAlphabet: HashSet[AlphabetSym]
   # speedup ascii matching
   for c in 0 .. 128:
@@ -70,7 +70,7 @@ proc createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
       discard
   assert toHashSet(result).len == result.len
 
-proc delta(
+func delta(
   nfa: seq[Node],
   states: Closure,
   sym: AlphabetSym
@@ -98,7 +98,7 @@ proc delta(
             result.incl(s)
             break
 
-proc dfa*(nfa: seq[Node]): Dfa =
+func dfa*(nfa: seq[Node]): Dfa =
   ## Powerset construction
   template closure(result, states) =
     for s in states:
@@ -142,7 +142,7 @@ type
   Capts* = seq[CaptNode]
   Captures* = seq[seq[Slice[int]]]
 
-proc constructSubmatches*(
+func constructSubmatches*(
   captures: var Captures,
   capts: Capts,
   capt: int,
@@ -205,7 +205,7 @@ proc len*(sm: Submatches): int {.inline.} =
   result = sm.i
 ]#
 
-proc submatch(
+func submatch(
   smA, smB: var Submatches,
   capts: var Capts,
   transitions: Transitions,
@@ -264,7 +264,7 @@ type
     namedGroups*: OrderedTable[string, int16]
     boundaries*: Slice[int]
 
-proc clear*(m: var RegexMatch) {.inline.} =
+func clear*(m: var RegexMatch) {.inline.} =
   if m.captures.len > 0:
     m.captures.setLen(0)
   if m.namedGroups.len > 0:
@@ -280,7 +280,7 @@ const syms* = [
 ]
 
 # Slow match
-proc symMatch(
+func symMatch(
   q: var int32,
   c: Rune,
   cSym: var int32,
@@ -339,7 +339,7 @@ template shortestMatch() {.dirty.} =
       result = true
       return
 
-proc matchImpl*(
+func matchImpl*(
   text: string,
   regex: Regex,
   m: var RegexMatch,

@@ -85,19 +85,19 @@ type
     # reUCC, reNotUCC
     cc*: UnicodeCategorySet
 
-proc toCharNode*(r: Rune): Node =
+func toCharNode*(r: Rune): Node =
   ## return a ``Node`` that is meant to be matched
   ## against text characters
   Node(kind: reChar, cp: r)
 
-proc initJoinerNode*(): Node =
+func initJoinerNode*(): Node =
   ## return a ``Node`` of ``reJoiner`` kind.
   ## Joiners are temporary nodes,
   ## they serve to generate the NFA
   ## but they are never part of it
   Node(kind: reJoiner, cp: "~".toRune)
 
-proc initEOENode*(): Node =
+func initEOENode*(): Node =
   ## return the end-of-expression ``Node``.
   ## This is a dummy node that marks a match as successful
   Node(kind: reEOE, cp: "¿".toRune)
@@ -112,17 +112,17 @@ template initSetNodeImpl(result: var Node, k: NodeKind) =
     ranges: @[],
     shorthands: @[])
 
-proc initSetNode*(): Node =
+func initSetNode*(): Node =
   ## return a set ``Node``,
   ## parsed from an expression such as ``[a-z]``
   initSetNodeImpl(result, reInSet)
 
-proc initNotSetNode*(): Node =
+func initNotSetNode*(): Node =
   ## return a negated set ``Node``,
   ## parsed from an expression such as ``[^a-z]``
   initSetNodeImpl(result, reNotSet)
 
-proc initGroupStart*(
+func initGroupStart*(
   name: string = "",
   flags: seq[Flag] = @[],
   isCapturing = true
@@ -135,7 +135,7 @@ proc initGroupStart*(
     flags: flags,
     isCapturing: isCapturing)
 
-proc isEmpty*(n: Node): bool =
+func isEmpty*(n: Node): bool =
   ## check if a set ``Node`` is empty
   assert n.kind in {reInSet, reNotSet}
   result = (

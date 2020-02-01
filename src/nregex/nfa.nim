@@ -3,7 +3,7 @@ import deques
 import nodetype
 import common
 
-proc check(cond: bool, msg: string) =
+func check(cond: bool, msg: string) =
   if not cond:
     raise newException(RegexError, msg)
 
@@ -15,7 +15,7 @@ type
     ## a state to find its ends,
     ## but have to keep them up-to-date
 
-proc combine(
+func combine(
   nfa: var seq[Node],
   ends: var seq[End],
   org: int16,
@@ -29,7 +29,7 @@ proc combine(
         ni = target
   ends[org] = ends[target]
 
-proc update(
+func update(
   ends: var seq[End],
   ni: int16,
   next: openArray[int16]
@@ -48,7 +48,7 @@ proc update(
 
 const eoe = 0'i16
 
-proc eNfa(expression: seq[Node]): seq[Node] =
+func eNfa(expression: seq[Node]): seq[Node] =
   ## Thompson's construction
   result = newSeqOfCap[Node](expression.len + 2)
   result.add(initEOENode())
@@ -152,7 +152,7 @@ type
   Zclosure = seq[int16]
   TeClosure = seq[(int16, Zclosure)]
 
-proc teClosure(
+func teClosure(
   result: var TeClosure,
   nfa: seq[Node],
   state: int16,
@@ -183,7 +183,7 @@ proc teClosure(
   for s in nfa[state].next:
     teClosure(result, nfa, s, visited, zTransitionsCurr)
 
-proc teClosure(
+func teClosure(
   result: var TeClosure,
   nfa: seq[Node],
   state: int16
@@ -201,7 +201,7 @@ type
     allZ*: TransitionsAll
     z*: ZclosureStates
 
-proc eRemoval(
+func eRemoval(
   eNfa: seq[Node],
   transitions: var Transitions
 ): seq[Node] =
@@ -271,7 +271,7 @@ proc eRemoval(
       assert statesMap[en2] > -1
       result[nn].next.add(statesMap[en2])
 
-proc nfa*(
+func nfa*(
   exp: seq[Node],
   transitions: var Transitions
 ): seq[Node] =

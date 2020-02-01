@@ -10,11 +10,11 @@ import nodetype
 import common
 import scanner
 
-proc check(cond: bool, msg: string) =
+func check(cond: bool, msg: string) =
   if not cond:
     raise newException(RegexError, msg)
 
-proc isAsciiPrintable(s: string): bool =
+func isAsciiPrintable(s: string): bool =
   result = true
   for c in s.runes:
     case c.int
@@ -23,7 +23,7 @@ proc isAsciiPrintable(s: string): bool =
     else:
       return false
 
-proc check(cond: bool, msg: string, at: int, exp: string) =
+func check(cond: bool, msg: string, at: int, exp: string) =
   if not cond:
     # todo: overflow checks
     const spaces = repeat(' ', "\n".len)
@@ -51,7 +51,7 @@ proc check(cond: bool, msg: string, at: int, exp: string) =
 template prettyCheck(cond: bool, msg: string) {.dirty.} =
   check(cond, msg, startPos, sc.raw)
 
-proc `$`(n: Node): string =
+func `$`(n: Node): string =
   ## return the string representation
   ## of a `Node`. The string is always
   ## equivalent to the original
@@ -109,7 +109,7 @@ proc `$`(n: Node): string =
 #  for nn in n:
 #    result.add($nn)
 
-proc toShorthandNode(r: Rune): Node =
+func toShorthandNode(r: Rune): Node =
   ## the given character must be a shorthand or
   ## else a ``CharNode`` is returned
   case r
@@ -128,7 +128,7 @@ proc toShorthandNode(r: Rune): Node =
   else:
     r.toCharNode
 
-proc toAssertionNode(r: Rune): Node =
+func toAssertionNode(r: Rune): Node =
   ## the given character must be an assertion or
   ## else a ``CharNode`` is returned
   case r
@@ -143,7 +143,7 @@ proc toAssertionNode(r: Rune): Node =
   else:
     r.toCharNode
 
-proc toEscapedSeqNode(r: Rune): Node =
+func toEscapedSeqNode(r: Rune): Node =
   ## the given character must be an
   ## escaped sequence or else a regular char
   ## Node is returned
@@ -163,7 +163,7 @@ proc toEscapedSeqNode(r: Rune): Node =
   else:
     r.toCharNode
 
-proc toEscapedNode(r: Rune): Node =
+func toEscapedNode(r: Rune): Node =
   ## return either a shorthand,
   ## an assertion, or a char node
   result = r.toShorthandNode
@@ -172,7 +172,7 @@ proc toEscapedNode(r: Rune): Node =
   if result.kind == reChar:
     result = r.toEscapedSeqNode
 
-proc parseUnicodeLit(sc: Scanner[Rune], size: int): Node =
+func parseUnicodeLit(sc: Scanner[Rune], size: int): Node =
   let startPos = sc.pos-1
   var rawCP = newString(size)
   for i in 0 ..< size:
@@ -195,7 +195,7 @@ proc parseUnicodeLit(sc: Scanner[Rune], size: int): Node =
     "Invalid unicode literal. $# value is too big" %% rawCP)
   result = Rune(cp).toCharNode
 
-proc parseUnicodeLitX(sc: Scanner[Rune]): Node =
+func parseUnicodeLitX(sc: Scanner[Rune]): Node =
   let startPos = sc.pos-1
   assert sc.peek == "{".toRune
   discard sc.next()
@@ -211,7 +211,7 @@ proc parseUnicodeLitX(sc: Scanner[Rune]): Node =
   assert sc.peek == "}".toRune
   discard sc.next()
 
-proc parseOctalLit(sc: Scanner[Rune]): Node =
+func parseOctalLit(sc: Scanner[Rune]): Node =
   let startPos = sc.pos
   var rawCP = newString(3)
   for i in 0 ..< 3:
@@ -228,7 +228,7 @@ proc parseOctalLit(sc: Scanner[Rune]): Node =
   discard parseOct(rawCP, cp)
   result = Rune(cp).toCharNode
 
-proc parseCC(s: string): UnicodeCategorySet =
+func parseCC(s: string): UnicodeCategorySet =
   try:
     result = s.categoryMap.UnicodeCategorySet
   except ValueError:
@@ -237,7 +237,7 @@ proc parseCC(s: string): UnicodeCategorySet =
     except ValueError:
       check(false, "Invalid unicode name?")
 
-proc parseUnicodeNameX(sc: Scanner[Rune]): Node =
+func parseUnicodeNameX(sc: Scanner[Rune]): Node =
   let startPos = sc.pos-1
   assert sc.peek == "{".toRune
   discard sc.next()
@@ -269,7 +269,7 @@ proc parseUnicodeNameX(sc: Scanner[Rune]): Node =
     cp: "¿".toRune,
     cc: name.parseCC)
 
-proc parseUnicodeName(sc: Scanner[Rune]): Node =
+func parseUnicodeName(sc: Scanner[Rune]): Node =
   let startPos = sc.pos-1
   case sc.peek
   of "{".toRune:
@@ -285,7 +285,7 @@ proc parseUnicodeName(sc: Scanner[Rune]): Node =
       cp: "¿".toRune,
       cc: sc.next().toUTF8.parseCC)
 
-proc parseEscapedSeq(sc: Scanner[Rune]): Node =
+func parseEscapedSeq(sc: Scanner[Rune]): Node =
   ## Parse a escaped sequence
   case sc.curr
   of "u".toRune:
@@ -313,7 +313,7 @@ proc parseEscapedSeq(sc: Scanner[Rune]): Node =
   else:
     result = next(sc).toEscapedNode
 
-proc parseSetEscapedSeq(sc: Scanner[Rune]): Node =
+func parseSetEscapedSeq(sc: Scanner[Rune]): Node =
   ## Just like regular ``parseEscapedSeq``
   ## but treats assertions as chars (ignore escaping)
   let cp = sc.peek
@@ -321,7 +321,7 @@ proc parseSetEscapedSeq(sc: Scanner[Rune]): Node =
   if result.kind in assertionKind:
     result = cp.toCharNode
 
-proc parseAsciiSet(sc: Scanner[Rune]): Node =
+func parseAsciiSet(sc: Scanner[Rune]): Node =
   ## Parse an ascii set (i.e: ``[:ascii:]``).
   ## The ascii set will get expanded
   ## and merged with the outer set
@@ -404,7 +404,7 @@ proc parseAsciiSet(sc: Scanner[Rune]): Node =
       false,
       "Invalid ascii set. `$#` is not a valid name" %% name)
 
-proc parseSet(sc: Scanner[Rune]): Node =
+func parseSet(sc: Scanner[Rune]): Node =
   ## parse a set atom (i.e ``[a-z]``) into a
   ## ``Node`` of ``reInSet`` or ``reNotSet`` kind.
   ## This proc is PCRE compatible and
@@ -486,7 +486,7 @@ proc parseSet(sc: Scanner[Rune]): Node =
     hasEnd,
     "Invalid set. Missing `]`")
 
-proc parseRepRange(sc: Scanner[Rune]): Node =
+func parseRepRange(sc: Scanner[Rune]): Node =
   ## parse a repetition range ``{n,m}``
   let startPos = sc.pos
   var
@@ -542,7 +542,7 @@ proc parseRepRange(sc: Scanner[Rune]): Node =
     min: firstNum.int16,
     max: lastNum.int16)
 
-proc toFlag(r: Rune): Flag =
+func toFlag(r: Rune): Flag =
   result = case r
   of "i".toRune:
     flagCaseInsensitive
@@ -562,7 +562,7 @@ proc toFlag(r: Rune): Flag =
       ("Invalid group flag, found $# " &
        "but expected one of: i, m, s, U or u") %% $r)
 
-proc toNegFlag(r: Rune): Flag =
+func toNegFlag(r: Rune): Flag =
   result = case r
   of "i".toRune:
     flagNotCaseInsensitive
@@ -587,7 +587,7 @@ template checkEmptyGroup() {.dirty.} =
     peek(sc) != toRune(")"),
     "Invalid group. Empty group is not allowed")
 
-proc parseGroupTag(sc: Scanner[Rune]): Node =
+func parseGroupTag(sc: Scanner[Rune]): Node =
   ## parse a special group (name, flags, non-captures).
   ## Return a regular ``reGroupStart``
   ## if it's not special enough
@@ -686,7 +686,7 @@ proc parseGroupTag(sc: Scanner[Rune]): Node =
       false,
       "Invalid group. Unknown group type")
 
-proc subParse(sc: Scanner[Rune]): Node =
+func subParse(sc: Scanner[Rune]): Node =
   let r = sc.prev
   case r
   of "\\".toRune:
@@ -716,7 +716,7 @@ proc subParse(sc: Scanner[Rune]): Node =
   else:
     r.toCharNode
 
-proc skipWhiteSpace(sc: Scanner[Rune], vb: seq[bool]): bool =
+func skipWhiteSpace(sc: Scanner[Rune], vb: seq[bool]): bool =
   ## skip white-spaces and comments on verbose mode
   result = false
   if vb.len == 0 or not vb[vb.len-1]:
@@ -737,7 +737,7 @@ proc skipWhiteSpace(sc: Scanner[Rune], vb: seq[bool]): bool =
   else:
     false
 
-proc verbosity(
+func verbosity(
   vb: var seq[bool],
   sc: Scanner[Rune],
   n: Node
@@ -770,7 +770,7 @@ proc verbosity(
   else:
     discard
 
-proc parse*(expression: string): seq[Node] =
+func parse*(expression: string): seq[Node] =
   ## convert a ``string`` regex expression
   ## into a ``Node`` expression
   result = newSeqOfCap[Node](expression.len)

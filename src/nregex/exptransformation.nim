@@ -9,7 +9,7 @@ import scanner
 
 # todo: can not use unicodeplus due to
 # https://github.com/nim-lang/Nim/issues/7059
-proc swapCase(r: Rune): Rune =
+func swapCase(r: Rune): Rune =
   # Note a character can be
   # non-lower and non-upper
   if r.isUpper():
@@ -19,11 +19,11 @@ proc swapCase(r: Rune): Rune =
   else:
     result = r
 
-proc check(cond: bool, msg: string) =
+func check(cond: bool, msg: string) =
   if not cond:
     raise newException(RegexError, msg)
 
-proc greediness(expression: seq[Node]): seq[Node] =
+func greediness(expression: seq[Node]): seq[Node] =
   ## apply greediness to an expression
   result = newSeqOfCap[Node](expression.len)
   var sc = expression.scan()
@@ -40,7 +40,7 @@ type
     count*: int16
     names*: OrderedTable[string, int16]
 
-proc fillGroups(
+func fillGroups(
   exp: seq[Node],
   groups: var GroupsCapture
 ): seq[Node] =
@@ -78,7 +78,7 @@ proc fillGroups(
     "Invalid capturing group. " &
     "Found too many opening symbols")
 
-proc toAsciiKind(k: NodeKind): NodeKind =
+func toAsciiKind(k: NodeKind): NodeKind =
   case k
   of reWordBoundary:
     reWordBoundaryAscii
@@ -103,7 +103,7 @@ proc toAsciiKind(k: NodeKind): NodeKind =
   else:
     k
 
-proc toggle(f: Flag): Flag =
+func toggle(f: Flag): Flag =
   ## toggle regular flag to
   ## negated flag and the other way around
   case f
@@ -132,7 +132,7 @@ proc toggle(f: Flag): Flag =
   of flagNotVerbose:
     flagVerbose
 
-proc squash(flags: seq[seq[Flag]]): array[Flag, bool] =
+func squash(flags: seq[seq[Flag]]): array[Flag, bool] =
   ## Nested groups may contain flags,
   ## this will set/unset those flags
   ## in order. It should be done each time
@@ -142,7 +142,7 @@ proc squash(flags: seq[seq[Flag]]): array[Flag, bool] =
       result[f.toggle()] = false
       result[f] = true
 
-proc applyFlag(n: var Node, f: Flag) =
+func applyFlag(n: var Node, f: Flag) =
   case f
   of flagAnyMatchNewLine:
     if n.kind == reAny:
@@ -191,7 +191,7 @@ proc applyFlag(n: var Node, f: Flag) =
       flagVerbose,
       flagNotVerbose}
 
-proc applyFlags(expression: seq[Node]): seq[Node] =
+func applyFlags(expression: seq[Node]): seq[Node] =
   ## apply flags to each group
   result = newSeqOfCap[Node](expression.len)
   var flags = newSeq[seq[Flag]]()
@@ -222,7 +222,7 @@ proc applyFlags(expression: seq[Node]): seq[Node] =
           applyFlag(n, f)
     result.add(n)
 
-proc expandOneRepRange(subExpr: seq[Node], n: Node): seq[Node] =
+func expandOneRepRange(subExpr: seq[Node], n: Node): seq[Node] =
   ## expand a repetition-range expression
   ## into the equivalent repeated expression
   assert n.kind == reRepRange
@@ -254,7 +254,7 @@ proc expandOneRepRange(subExpr: seq[Node], n: Node): seq[Node] =
       cp: "?".toRune,
       isGreedy: n.isGreedy))
 
-proc expandRepRange(expression: seq[Node]): seq[Node] =
+func expandRepRange(expression: seq[Node]): seq[Node] =
   ## expand every repetition range
   result = newSeqOfCap[Node](expression.len)
   var i: int
@@ -284,7 +284,7 @@ proc expandRepRange(expression: seq[Node]): seq[Node] =
         "char, shorthand (i.e: \\w), group, or set " &
         "expected before repetition range"))
 
-proc joinAtoms(expression: seq[Node]): seq[Node] =
+func joinAtoms(expression: seq[Node]): seq[Node] =
   ## Put a ``~`` joiner between atoms. An atom is
   ## a piece of expression that would loose
   ## meaning when breaking it up (i.e.: ``a~(b|c)*~d``)
@@ -324,7 +324,7 @@ type
     precedence: int
     associativity: Associativity
 
-proc opsPA(nk: NodeKind): OpsPA =
+func opsPA(nk: NodeKind): OpsPA =
   ## return the precedence and
   ## associativity of a given node kind
   assert nk in opKind
@@ -341,7 +341,7 @@ proc opsPA(nk: NodeKind): OpsPA =
   else:
     assert false
 
-proc hasPrecedence(a: NodeKind, b: NodeKind): bool =
+func hasPrecedence(a: NodeKind, b: NodeKind): bool =
   ## Check ``b`` has precedence over ``a``.
   ## Both ``a`` and ``b`` are expected to
   ## be valid operators. Unary operators such
@@ -355,7 +355,7 @@ proc hasPrecedence(a: NodeKind, b: NodeKind): bool =
     (opsPA(b).associativity == asyLeft and
       opsPA(b).precedence < opsPA(a).precedence)
 
-proc popGreaterThan(ops: var seq[Node], op: Node): seq[Node] =
+func popGreaterThan(ops: var seq[Node], op: Node): seq[Node] =
   assert op.kind in opKind
   result = newSeqOfCap[Node](ops.len)
   while (ops.len > 0 and
@@ -363,7 +363,7 @@ proc popGreaterThan(ops: var seq[Node], op: Node): seq[Node] =
       ops[ops.len - 1].kind.hasPrecedence(op.kind)):
     result.add(ops.pop())
 
-proc popUntilGroupStart(ops: var seq[Node]): seq[Node] =
+func popUntilGroupStart(ops: var seq[Node]): seq[Node] =
   result = newSeqOfCap[Node](ops.len)
   while true:
     let op = ops.pop()
@@ -371,7 +371,7 @@ proc popUntilGroupStart(ops: var seq[Node]): seq[Node] =
     if op.kind == reGroupStart:
       break
 
-proc rpn(expression: seq[Node]): seq[Node] =
+func rpn(expression: seq[Node]): seq[Node] =
   ## An adaptation of the Shunting-yard algorithm
   ## for producing `Reverse Polish Notation` out of
   ## an expression specified in infix notation.
@@ -400,7 +400,7 @@ proc rpn(expression: seq[Node]): seq[Node] =
   for i in 1 .. ops.len:
     result.add(ops[ops.len - i])
 
-proc transformExp*(
+func transformExp*(
   exp: seq[Node],
   groups: var GroupsCapture
 ): seq[Node] {.inline.} =
