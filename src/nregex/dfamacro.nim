@@ -301,28 +301,30 @@ func matchImpl*(
     cPrev = -1'i32
     c: Rune
     q = 0'i32
-    qOld = q
+    qOld {.used.} = q
     qt = q
     i = start
     iPrev = start
   # workaround for https://github.com/nim-lang/Nim/issues/13252
   const
+    reFlags = regex.flags
     hasTransionsZ = regex.transitions.z.len > 0
     groupCount {.used.} = regex.groupsCount
     namedGroups {.used.} = regex.namedGroups
   when hasTransionsZ:
     smA.add((0'i16, -1'i32))
   while i < len(text):
-    # XXX when no ascii mode
-    fastRuneAt(text, i, c, true)
-    #c = Rune(text[i])
-    #inc i
-    qOld = q
+    when reAscii notin reFlags:
+      fastRuneAt(text, i, c, true)
+      qOld = q
+    else:
+      c = Rune(text[i])
+      inc i
     genTable(q, qt, c.int32, regex)
     if (q == -1'i32).unlikely:
-      # XXX when no ascii mode
-      q = qOld
-      genSymMatchTable(q, qt, c.int32, regex)
+      when reAscii notin reFlags:
+        q = qOld
+        genSymMatchTable(q, qt, c.int32, regex)
       if (q == -1'i32).unlikely:
         return
     when hasTransionsZ:

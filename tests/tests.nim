@@ -1461,6 +1461,20 @@ test "capturingGroupsNames":
     doAssert m.groupLastCapture("who", text) == ""
 ]#
 
+# XXX raise a compile error when regex contains unicode
+#     in ascii mode
+test "tflags":
+  var m: RegexMatch
+  check match("abc", re(r"abc", {reAscii}), m)
+  check match("弢弢弢", re"\w{3}", m)
+  check not match("弢弢弢", re(r"\w{3}", {reAscii}), m)
+  check re"\w" in "弢"
+  check re(r"\w", {reAscii}) notin "弢"
+  check re(r"\w", {reAscii}) in "a"
+  check "%ab%".find(re(r"\w{2}", {reAscii}), m)
+  check "%弢弢%".find(re"\w{2}", m)
+  check not "%弢弢%".find(re(r"\w{2}", {reAscii}), m)
+
 test "tmisc2":
   var m: RegexMatch
   check "one<TAG>two</TAG>tree".find(re"<TAG>.*?</TAG>", m)

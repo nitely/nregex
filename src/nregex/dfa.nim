@@ -247,12 +247,15 @@ func submatch(
   swap(smA, smB)
 
 type
+  RegexFlag* = enum
+    reAscii
   Regex* = object
     ## a compiled regular expression
     dfa*: Dfa
     transitions*: Transitions
     groupsCount*: int16
     namedGroups*: OrderedTable[string, int16]
+    flags*: set[RegexFlag]
   MatchFlag* = enum
     mfShortestMatch
     mfLongestMatch
@@ -349,6 +352,7 @@ func matchImpl*(
   #echo dfa
   m.clear()
   result = false
+  let asciiMode = reAscii in regex.flags
   var
     smA: Submatches
     smB: Submatches
@@ -368,7 +372,11 @@ func matchImpl*(
     smA.add((0'i16, -1'i32))
   #echo regex.dfa
   while i < len(text):
-    fastRuneAt(text, i, c, true)
+    if not asciiMode:
+      fastRuneAt(text, i, c, true)
+    else:
+      c = Rune(text[i])
+      inc i
     when mfShortestMatch in flags:
       shortestMatch()
     when mfLongestMatch in flags:
@@ -377,8 +385,9 @@ func matchImpl*(
     if (c.int32 in regex.dfa.table[q]).likely:
       qnext = regex.dfa.table[q][c.int32]
     else:
-      symMatch(qnext, c, cSym, regex)
-      if qnext == -1:
+      if not asciiMode:
+        symMatch(qnext, c, cSym, regex)
+      if qnext == -1 or asciiMode:
         when mfLongestMatch in flags:
           longestMatchExit()
         else:

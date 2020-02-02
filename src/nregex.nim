@@ -9,15 +9,13 @@ import nregex/nfa
 import nregex/dfa
 import nregex/dfamacro
 
-type
-  Regex* = dfa.Regex
-    ## a compiled regular expression
-  RegexMatch* = dfa.RegexMatch
-  RegexError* = common.RegexError
-    ## raised when the pattern
-    ## is not a valid regex
+export
+  Regex,
+  RegexMatch,
+  RegexFlag,
+  RegexError
 
-template reImpl(s: untyped): Regex =
+template reImpl(s, flags: untyped): Regex =
   var groups: GroupsCapture
   var transitions: Transitions
   let dfa = s
@@ -29,14 +27,21 @@ template reImpl(s: untyped): Regex =
     dfa: dfa,
     transitions: transitions,
     groupsCount: groups.count,
-    namedGroups: groups.names)
+    namedGroups: groups.names,
+    flags: flags)
 
-func re*(s: string): Regex {.inline.} =
-  reImpl(s)
+func re*(
+  s: string,
+  flags: set[RegexFlag] = {}
+): Regex {.inline.} =
+  reImpl(s, flags)
 
 when not defined(forceRegexAtRuntime):
-  func re*(s: static string): static Regex {.inline.} =
-    reImpl(s)
+  func re*(
+    s: static string,
+    flags: static set[RegexFlag] = {}
+  ): static Regex {.inline.} =
+    reImpl(s, flags)
 
 iterator group*(m: RegexMatch, i: int): Slice[int] =
   ## return slices for a given group.
@@ -234,6 +239,7 @@ func find*(
 when isMainModule:
   var m: RegexMatch
 
+  doAssert match("abc", re(r"abc", {reAscii}), m)
   doAssert match("abc", re"abc", m)
   doAssert match("ab", re"a(b|c)", m)
   doAssert match("ac", re"a(b|c)", m)
@@ -316,9 +322,15 @@ when isMainModule:
   doAssert re"bc" in "abcd"
   doAssert re"(23)+" in "23232"
   doAssert re"^(23)+$" notin "23232"
+  doAssert re"\w" in "弢"
+  doAssert re(r"\w", {reAscii}) notin "弢"
+  doAssert re(r"\w", {reAscii}) in "a"
 
   doAssert "abcd".find(re"bc", m)
   doAssert not "abcd".find(re"de", m)
+  doAssert "%ab%".find(re(r"\w{2}", {reAscii}), m)
+  doAssert "%弢弢%".find(re"\w{2}", m)
+  doAssert not "%弢弢%".find(re(r"\w{2}", {reAscii}), m)
   doAssert(
     "2222".find(re"(22)*", m) and
     m.group(0) == @[0 .. 1, 2 .. 3])
