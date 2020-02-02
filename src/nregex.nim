@@ -98,7 +98,11 @@ func groupNames*(m: RegexMatch): seq[string] =
 
   result = toSeq(m.namedGroups.keys)
 
-func group*(m: RegexMatch, groupName: string, text: string): seq[string] = 
+func group*(
+  m: RegexMatch,
+  groupName: string,
+  text: string
+): seq[string] = 
   ## return seq of captured text by group `groupName`
   runnableExamples:
     let text = "hello beautiful world"
@@ -111,7 +115,11 @@ func group*(m: RegexMatch, groupName: string, text: string): seq[string] =
   for bounds in m.group(groupName):
     result.add text[bounds]
 
-func groupFirstCapture*(m: RegexMatch, groupName: string, text: string): string =
+func groupFirstCapture*(
+  m: RegexMatch,
+  groupName: string,
+  text: string
+): string =
   ##  Return fist capture for a given capturing group
   runnableExamples:
     let text = "hello beautiful world"
@@ -126,7 +134,11 @@ func groupFirstCapture*(m: RegexMatch, groupName: string, text: string): string 
   else:
     return "" 
 
-func groupLastCapture*(m: RegexMatch, groupName: string, text: string): string =
+func groupLastCapture*(
+  m: RegexMatch,
+  groupName: string,
+  text: string
+): string =
   ##  Return last capture for a given capturing group
   runnableExamples:
     let text = "hello beautiful world"

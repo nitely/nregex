@@ -152,6 +152,26 @@ type
   Zclosure = seq[int16]
   TeClosure = seq[(int16, Zclosure)]
 
+func isTransitionZ(n: Node): bool {.inline.} =
+  result = case n.kind
+    of groupKind:
+      n.isCapturing
+    of reInSet:
+      # XXX always false in ascii mode
+      var isZ = false
+      for s in n.shorthands:
+        isZ = s.kind notin {reAny, reAnyNl, reDigit, reWord}
+        if isZ:
+          break
+      isZ
+    of assertionKind:
+      true
+    of matchTransitionKind - {reInSet}:
+      # XXX false in ascii mode
+      true
+    else:
+      false
+
 func teClosure(
   result: var TeClosure,
   nfa: seq[Node],
@@ -163,20 +183,8 @@ func teClosure(
     return
   visited.incl(state)
   var zTransitionsCurr = zTransitions
-  if nfa[state].kind in groupKind and nfa[state].isCapturing:
+  if isTransitionZ(nfa[state]):
     zTransitionsCurr.add(state)
-  if nfa[state].kind in assertionKind:
-    zTransitionsCurr.add(state)
-  if nfa[state].kind == reInSet:  # XXX don't do this in ascii mode
-    # XXX skip if subset of {reAny, reAnyNl, reDigit, reWord} for reInSet
-    if nfa[state].shorthands.len > 0:
-      zTransitionsCurr.add(state)
-    result.add((state, zTransitionsCurr))
-    return
-  if nfa[state].kind in matchTransitionKind:  # XXX don't do this in ascii mode
-    zTransitionsCurr.add(state)
-    result.add((state, zTransitionsCurr))
-    return
   if nfa[state].kind in matchableKind + {reEOE}:
     result.add((state, zTransitionsCurr))
     return
@@ -256,19 +264,14 @@ func eRemoval(
   for en, nn in statesMap.pairs:
     if nn == -1:
       continue
-    result[nn] = case eNfa[en].kind
-      of reInSet:
-        if eNfa[en].shorthands.len > 0:
-          Node(kind: reAnyNl, cp: "#".toRune)
-        else:
-          eNfa[en]
-      of matchTransitionKind - {reInSet}:
-        Node(kind: reAnyNl, cp: "#".toRune)
-      else:
-        eNfa[en]
+    result[nn] = if isTransitionZ(eNfa[en]):
+      doAssert eNfa[en].kind in matchableKind
+      Node(kind: reAnyNl, cp: "#".toRune)
+    else:
+      eNfa[en]
     result[nn].next.setLen(0)
     for en2 in eNfa[en].next:
-      assert statesMap[en2] > -1
+      doAssert statesMap[en2] > -1
       result[nn].next.add(statesMap[en2])
 
 func nfa*(
