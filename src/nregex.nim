@@ -177,18 +177,23 @@ when not defined(forceRegexAtRuntime):
   ): bool {.inline.} =
     ## return a match if the whole string
     ## matches the regular expression. This
-    ## is similar to ``find(text, re"^regex$")``
+    ## is similar to ``find(text, re"^regex$", m)``,
     ## but has better performance
     runnableExamples:
       var m: RegexMatch
       doAssert "abcd".match(re"abcd", m)
-      doAssert(not "abcd".match(re"abc", m))
+      doAssert not "abcd".match(re"abc", m)
 
-    when pattern.namedGroups.len > 0:
-      const namedGroups = pattern.namedGroups
-      m.namedGroups = namedGroups
     const f: MatchFlags = {}
     result = matchImpl(s, pattern, m, f, start)
+
+  func match*(s: string, pattern: static Regex): bool {.inline.} =
+    runnableExamples:
+      doAssert "abcd".match(re"abcd")
+      doAssert not "abcd".match(re"abc")
+
+    var m: RegexMatch
+    result = matchImpl(s, pattern, m, {mfNoCaptures})
 
 func match*(
   s: string,
@@ -199,24 +204,26 @@ func match*(
   const f: MatchFlags = {}
   result = matchImpl(s, pattern, m, f, start)
 
+func match*(s: string, pattern: Regex): bool {.inline.} =
+  var m: RegexMatch
+  result = matchImpl(s, pattern, m, {mfNoCaptures})
+
 func contains*(s: string, pattern: Regex): bool {.inline.} =
-  ##  search for the pattern anywhere
-  ##  in the string. It returns as soon
-  ##  as there is a match, even when the
-  ##  expression has repetitions. Use
-  ##  ``re"^regex$"`` to match the whole
-  ##  string instead of searching
+  ## search for the pattern anywhere
+  ## in the string. It returns as soon
+  ## as there is a match, even when the
+  ## expression has repetitions
   runnableExamples:
-    doAssert(re"bc" in "abcd")
-    doAssert(re"(23)+" in "23232")
-    doAssert(re"^(23)+$" notin "23232")
+    doAssert re"bc" in "abcd"
+    doAssert re"(23)+" in "23232"
+    doAssert re"^(23)+$" notin "23232"
 
   result = false
   var m: RegexMatch
   var i = 0
   var c: Rune
   while i < len(s):
-    result = matchImpl(s, pattern, m, {mfShortestMatch}, i)
+    result = matchImpl(s, pattern, m, {mfShortestMatch, mfNoCaptures}, i)
     if result:
       break
     fastRuneAt(s, i, c, true)
@@ -318,6 +325,12 @@ when isMainModule:
     m.captures == @[@[0 .. -1], @[0 .. 3]]
   doAssert match("aaaa", re"(a)*(a)", m) and
     m.captures == @[@[0 .. 0, 1 .. 1, 2 .. 2], @[3 .. 3]]
+  
+  doAssert match("abc", re"abc")
+  doAssert not match("abc", re"abd")
+  doAssert not match("abc", re"ab")
+  doAssert not match("abc", re"b")
+  doAssert not match("abc", re"c")
 
   doAssert re"bc" in "abcd"
   doAssert re"(23)+" in "23232"
@@ -345,3 +358,6 @@ when isMainModule:
   doAssert match("650-253-0001", re"[0-9]+..*", m)
   doAssert not match("abc-253-0001", re"[0-9]+..*", m)
   doAssert not match("6", re"[0-9]+..*", m)
+
+  doAssert match("abcabcabc", re"(?:(?:abc)){3}")
+  doAssert match("abcabcabc", re"((abc)){3}")
