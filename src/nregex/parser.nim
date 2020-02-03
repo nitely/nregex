@@ -67,7 +67,7 @@ func `$`(n: Node): string =
     else:
       n.cp.toUTF8
   of reRepRange:
-    "¿"  # Invalid
+    "#"  # Invalid
   of reStart:
     "\\A"
   of reEnd:
@@ -266,7 +266,7 @@ func parseUnicodeNameX(sc: Scanner[Rune]): Node =
     "Invalid unicode name. Found $#" %% name)
   result = Node(
     kind: reUCC,
-    cp: "¿".toRune,
+    cp: "#".toRune,
     cc: name.parseCC)
 
 func parseUnicodeName(sc: Scanner[Rune]): Node =

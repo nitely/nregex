@@ -100,14 +100,14 @@ func initJoinerNode*(): Node =
 func initEOENode*(): Node =
   ## return the end-of-expression ``Node``.
   ## This is a dummy node that marks a match as successful
-  Node(kind: reEOE, cp: "¿".toRune)
+  Node(kind: reEOE, cp: "#".toRune)
 
 template initSetNodeImpl(result: var Node, k: NodeKind) =
   ## base node
   assert k in {reInSet, reNotSet}
   result = Node(
     kind: k,
-    cp: "¿".toRune,
+    cp: "#".toRune,
     cps: initHashSet[Rune](2),
     ranges: @[],
     shorthands: @[])

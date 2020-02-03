@@ -145,7 +145,7 @@ func eNfa(expression: seq[Node]): seq[Node] =
   assert states.len == 1
   result.add(Node(
     kind: reSkip,
-    cp: "¿".toRune,
+    cp: "#".toRune,
     next: states))
 
 type

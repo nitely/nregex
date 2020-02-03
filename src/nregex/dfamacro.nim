@@ -335,6 +335,7 @@ func matchImpl*(
   when hasTransionsZ:
     if not result:
       return
+    # XXX lighter submatchEoe
     submatch(smA, smB, capts, regex, iPrev, qt, cPrev, symEoe)
     if smA.len == 0:
       result = false
