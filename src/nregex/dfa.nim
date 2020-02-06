@@ -68,7 +68,7 @@ func createAlphabet(nfa: seq[Node]): seq[AlphabetSym] =
             inAlphabet.incl(cp.int32)
     else:
       discard
-  assert toHashSet(result).len == result.len
+  assert result.toHashSet.len == result.len
 
 func delta(
   nfa: seq[Node],
@@ -110,19 +110,21 @@ func dfa*(nfa: seq[Node]): Dfa =
   closure(q0, [n0])
   var qw = initDeque[Closure]()
   qw.addFirst(q0)
-  var qu: Table[Closure, int32]
+  var qu = initTable[Closure, int32]()
   var quPos = 0'i32
   qu[q0] = quPos
   inc quPos
   result.table.add(initTable[AlphabetSym, int32](2))
   result.closures.add(initTable[AlphabetSym, int32](2))
+  var t = initHashSet[int16]()
+  var csRev = initTable[Closure, int32]()
   while qw.len > 0:
     let qa = qw.popLast()
     for sym in alphabet:
       let s = delta(nfa, qa, sym)
       if s.len == 0:
         continue
-      var t: HashSet[int16]
+      t.clear()
       closure(t, s)
       if t notin qu:
         qu[t] = quPos
@@ -131,8 +133,115 @@ func dfa*(nfa: seq[Node]): Dfa =
         result.table.add(initTable[AlphabetSym, int32](2))
         result.closures.add(initTable[AlphabetSym, int32](2))
       result.table[qu[qa]][sym] = qu[t]
-      result.cs.add(s)
-      result.closures[qu[qa]][sym] = int32(result.cs.len-1)
+      if s in csRev:
+        result.closures[qu[qa]][sym] = csRev[s]
+      else:
+        assert s notin result.cs
+        result.closures[qu[qa]][sym] = result.cs.len.int32
+        csRev[s] = result.cs.len.int32
+        result.cs.add(s)
+
+func xF(dfa: Dfa): HashSet[int32] =
+  ## return all final states
+  for i, t in dfa.table.pairs:
+    if symEoe in t:
+      result.incl(i.int32)
+  doAssert result.len > 0
+
+func xQ(dfa: Dfa): HashSet[int32] =
+  ## return all states
+  for i in 0'i32 .. (dfa.table.len-1).int32:
+    result.incl(i)
+
+func delta(
+  dfa: Dfa,
+  s: HashSet[int32],
+  c: AlphabetSym
+): HashSet[int32] =
+  ## return set of states that can reach `s` on `c`
+  for i, t in dfa.table.pairs:
+    if c in t and t[c] in s:
+      result.incl(i.int32)
+
+proc partition(r, i: HashSet[int32]): (HashSet[int32], HashSet[int32]) =
+  ## partition r into r1 and r2, such as r1 is the intersection
+  ## of r and i, and r2 is r - such intersection
+  for x in r:
+    if x in i:
+      result[0].incl(x)
+    else:
+      result[1].incl(x)
+
+# unoptimized
+func minimize*(
+  dfa: Dfa,
+  alphabet: seq[AlphabetSym]
+): Dfa =
+  ## Hopcroft
+  let f = dfa.xF()
+  let q = dfa.xQ()
+  var w: seq[HashSet[int32]]
+  w.add(f)
+  w.add(q - f)
+  var p: seq[HashSet[int32]]
+  p.add(f)
+  p.add(q - f)
+  while w.len > 0:
+    let s = w.pop()
+    for c in alphabet:
+      let i = delta(dfa, s, c)
+      var pcopy = p
+      for r in pcopy:
+        if (r - i).len == 0:  # is R a subset of I
+          continue
+        if (i - r).len == i.len: # the intersection of R and I is empty
+          continue
+        let (r1, r2) = partition(r, i)
+        assert p.find(r) > -1
+        p[p.find(r)] = r1  # XXX for ri, r in p.pairs
+        p.add(r2)
+        if r in w:
+          assert w.find(r) > -1
+          w[w.find(r)] = r1
+          w.add(r2)
+        elif r1.len <= r2.len:
+          w.add(r1)
+        else:
+          w.add(r2)
+  assert p.len <= dfa.table.len, "not a min DFA, wtf?"
+  # map DFA states to min-DFA states
+  var statesMap = newSeq[int32](dfa.table.len)
+  for i in 0 .. statesMap.len-1:
+    statesMap[i] = -1
+  for ri, r in p.pairs:
+    for q in r:
+      assert statesMap[q] == -1
+      statesMap[q] = ri.int32
+  result.table.setLen(p.len)
+  result.closures.setLen(p.len)
+  var closure = initHashSet[int16](2)
+  var qnext: int32
+  for ri, r in p.pairs:
+    result.table[ri] = initTable[AlphabetSym, int32](2)
+    result.closures[ri] = initTable[AlphabetSym, int32](2)
+    for c in alphabet:  # XXX iterate dfa.table[q] instead
+      qnext = -1'i32
+      closure.clear()
+      for q in r:  # r = new closure
+        if c notin dfa.table[q]:
+          continue
+        assert qnext == -1 or qnext == dfa.table[q][c]
+        qnext = dfa.table[q][c]
+        closure.incl(dfa.cs[dfa.closures[q][c]])
+      if qnext == -1:
+        assert closure.len == 0
+        continue
+      assert closure.len > 0
+      assert c notin result.table[ri]
+      result.table[ri][c] = statesMap[qnext]
+      # XXX massive duplication, closure is likely already in cs
+      result.cs.add(closure)
+      result.closures[ri][c] = (result.cs.len-1).int32
 
 type
   CaptNode* = object
@@ -172,38 +281,7 @@ type
   NodeIdx = int16
   CaptIdx = int32
   Submatches* = seq[(NodeIdx, CaptIdx)]
-
-# XXX using a seq for Submatches is the current bottleck,
-#     using an array makes things 5x times faster, however,
-#     due to https://github.com/nim-lang/Nim/issues/12747
-#     an array larger than 4 is slow. Once that issue is solved
-#     it would be nice if Submatches would use an array until
-#     its size is exceeded (should be rare for an array of size 128),
-#     then fallback to a seq
-#[
-  Submatches* = object
-    s: array[4, (NodeIdx, CaptIdx)]
-    i: int8
-
-iterator items*(sm: Submatches): (NodeIdx, CaptIdx) {.inline.} =
-  var i = 0
-  while i < sm.i:
-    yield sm.s[i]
-    inc i
-
-proc `[]`*(sm: Submatches, i: int): (NodeIdx, CaptIdx) {.inline.} =
-  result = sm.s[i]
-
-proc setLen*(sm: var Submatches, i: int8) {.inline.} =
-  sm.i = i
-
-proc add*(sm: var Submatches, item: (NodeIdx, CaptIdx)) {.inline.} =
-  sm.s[sm.i] = item
-  inc sm.i
-
-proc len*(sm: Submatches): int {.inline.} =
-  result = sm.i
-]#
+    ## Parallel states would be a better name
 
 func submatch(
   smA, smB: var Submatches,
