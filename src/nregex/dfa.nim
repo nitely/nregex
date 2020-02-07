@@ -13,7 +13,7 @@ import common
 import nfa
 
 type
-  AlphabetSym = int32
+  AlphabetSym* = int32
   Closure* = HashSet[int16]
   DfaRow* = Table[AlphabetSym, int32]
   DfaClosure* = Table[AlphabetSym, int32]
@@ -98,13 +98,16 @@ func delta(
             result.incl(s)
             break
 
-func dfa*(nfa: seq[Node]): Dfa =
+func dfa*(
+  nfa: seq[Node],
+  alphabet: var seq[AlphabetSym]
+): Dfa =
   ## Powerset construction
   template closure(result, states) =
     for s in states:
       for sn in nfa[s].next:
         result.incl(sn)
-  let alphabet = createAlphabet(nfa)
+  alphabet = createAlphabet(nfa)
   let n0 = 0
   var q0: Closure
   closure(q0, [n0])
@@ -141,15 +144,27 @@ func dfa*(nfa: seq[Node]): Dfa =
         csRev[s] = result.cs.len.int32
         result.cs.add(s)
 
-func xF(dfa: Dfa): HashSet[int32] =
+func reverse(dfa: Dfa): Dfa =
+  ## return reversed dfa table
+  result.table.setLen(dfa.table.len)
+  for i in 0 .. dfa.table.len-1:
+    result.table[i] = initTable[AlphabetSym, int32](2)
+  for i, t in dfa.table.pairs:
+    for c, q in t.pairs:
+      # add dup key
+      result.table[q].add(c, i.int32)
+
+func xF(dfa: Dfa): HashSet[int32] {.inline.} =
   ## return all final states
+  result = initHashSet[int32](2)
   for i, t in dfa.table.pairs:
     if symEoe in t:
       result.incl(i.int32)
   doAssert result.len > 0
 
-func xQ(dfa: Dfa): HashSet[int32] =
+func xQ(dfa: Dfa): HashSet[int32] {.inline.} =
   ## return all states
+  result = initHashSet[int32](2)
   for i in 0'i32 .. (dfa.table.len-1).int32:
     result.incl(i)
 
@@ -157,27 +172,53 @@ func delta(
   dfa: Dfa,
   s: HashSet[int32],
   c: AlphabetSym
-): HashSet[int32] =
+): HashSet[int32] {.inline.} =
   ## return set of states that can reach `s` on `c`
-  for i, t in dfa.table.pairs:
-    if c in t and t[c] in s:
-      result.incl(i.int32)
+  result = initHashSet[int32](2)
+  for q in s:
+    for q2 in dfa.table[q].allValues(c):
+      result.incl(q2)
 
-proc partition(r, i: HashSet[int32]): (HashSet[int32], HashSet[int32]) =
+func canPartition(r, i: HashSet[int32]): bool {.inline.} =
+  ## return false if:
+  ## * R is a subset of I
+  ## * the intersection of R and I is empty
+  var intr = 0
+  for q in r:
+    intr += int(q in i)
+  result = 0 < intr and intr < r.len
+
+func partition(
+  r, i: HashSet[int32]
+): (HashSet[int32], HashSet[int32]) {.inline.} =
   ## partition r into r1 and r2, such as r1 is the intersection
   ## of r and i, and r2 is r - such intersection
+  result = (
+    initHashSet[int32](2),
+    initHashSet[int32](2))
   for x in r:
     if x in i:
       result[0].incl(x)
     else:
       result[1].incl(x)
 
-# unoptimized
+# without minimize
+# 43745 lines compiled; 8.679 sec total; 256.574MiB peakmem
+# unoptimized minimize
+# 43746 lines compiled; 35.277 sec total; 309.113MiB peakmem;
+# removing p[p.find(r)] and (r in w)
+# 43746 lines compiled; 32.970 sec total; 319.766MiB peakmem;
+# removing two (r - i) intersections of hashSets
+# 43756 lines compiled; 16.145 sec total; 308.73MiB peakmem;
+# dfa.reverse and init all hashsets to 2, except q-f is 64
+# 43779 lines compiled; 12.209 sec total; 309.234MiB peakmem
 func minimize*(
   dfa: Dfa,
   alphabet: seq[AlphabetSym]
 ): Dfa =
   ## Hopcroft
+  template r: untyped {.dirty.} = p[ri]
+  let dfaRev = dfa.reverse()
   let f = dfa.xF()
   let q = dfa.xQ()
   var w: seq[HashSet[int32]]
@@ -188,27 +229,34 @@ func minimize*(
   p.add(q - f)
   while w.len > 0:
     let s = w.pop()
-    for c in alphabet:
-      let i = delta(dfa, s, c)
-      var pcopy = p
-      for r in pcopy:
-        if (r - i).len == 0:  # is R a subset of I
-          continue
-        if (i - r).len == i.len: # the intersection of R and I is empty
+    for c in alphabet:  # XXX take alphabet from `for q in s: dfa[q]`
+      let i = delta(dfaRev, s, c)
+      for ri in 0 .. p.len-1:
+        if not canPartition(r, i):
           continue
         let (r1, r2) = partition(r, i)
-        assert p.find(r) > -1
-        p[p.find(r)] = r1  # XXX for ri, r in p.pairs
+        p[ri] = r1
         p.add(r2)
-        if r in w:
-          assert w.find(r) > -1
-          w[w.find(r)] = r1
+        let wi = w.find(r)
+        if wi > -1:
+          w[wi] = r1
           w.add(r2)
         elif r1.len <= r2.len:
           w.add(r1)
         else:
           w.add(r2)
   assert p.len <= dfa.table.len, "not a min DFA, wtf?"
+  # XXX should reorder the whole thing to mirror
+  #     the DFA order for perf (no jumping around),
+  #     instead of just fixing the first state
+  # make the initial state the first state
+  var ri0 = -1
+  for ri, r in p.pairs:
+    if 0 in r:
+      ri0 = ri
+      break
+  assert ri0 > -1
+  swap p[0], p[ri0]
   # map DFA states to min-DFA states
   var statesMap = newSeq[int32](dfa.table.len)
   for i in 0 .. statesMap.len-1:
@@ -217,6 +265,7 @@ func minimize*(
     for q in r:
       assert statesMap[q] == -1
       statesMap[q] = ri.int32
+  # construct min-DFA table
   result.table.setLen(p.len)
   result.closures.setLen(p.len)
   var closure = initHashSet[int16](2)
@@ -230,7 +279,8 @@ func minimize*(
       for q in r:  # r = new closure
         if c notin dfa.table[q]:
           continue
-        assert qnext == -1 or qnext == dfa.table[q][c]
+        assert qnext == -1 or
+          statesMap[qnext] == statesMap[dfa.table[q][c]]
         qnext = dfa.table[q][c]
         closure.incl(dfa.cs[dfa.closures[q][c]])
       if qnext == -1:

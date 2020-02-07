@@ -18,11 +18,13 @@ export
 template reImpl(s, flags: untyped): Regex =
   var groups: GroupsCapture
   var transitions: Transitions
+  var alphabet: seq[AlphabetSym]
   let dfa = s
     .parse
     .transformExp(groups)
     .nfa(transitions)
-    .dfa
+    .dfa(alphabet)
+    #.minimize(alphabet)
   Regex(
     dfa: dfa,
     transitions: transitions,
