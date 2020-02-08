@@ -139,12 +139,54 @@ func dfa*(
       if s in csRev:
         result.closures[qu[qa]][sym] = csRev[s]
       else:
-        assert s notin result.cs
         result.closures[qu[qa]][sym] = result.cs.len.int32
         csRev[s] = result.cs.len.int32
         result.cs.add(s)
+  assert result.table.len == result.closures.len
+  assert result.cs.toHashSet.len == result.cs.len
 
-func reverse(dfa: Dfa): Dfa =
+func minDfaTable(
+  dfa: Dfa,
+  p: seq[HashSet[int32]]
+): Dfa {.inline.} =
+  ## Construct DFA from Hopcroft partitions
+  # map DFA states to min-DFA states
+  var statesMap = newSeq[int32](dfa.table.len)
+  for i in 0 .. statesMap.len-1:
+    statesMap[i] = -1
+  for ri, r in p.pairs:
+    for q in r:
+      assert statesMap[q] == -1
+      statesMap[q] = ri.int32
+  # construct min-DFA table
+  result.table.setLen(p.len)
+  result.closures.setLen(p.len)
+  var csRev = initTable[Closure, int32]()
+  var closures = initTable[AlphabetSym, Closure]()
+  for ri, r in p.pairs:
+    assert r.len > 0
+    result.table[ri] = initTable[AlphabetSym, int32](2)
+    result.closures[ri] = initTable[AlphabetSym, int32](2)
+    closures.clear()
+    for q in r:
+      for c, q2 in dfa.table[q].pairs:
+        assert c notin result.table[ri] or
+          result.table[ri][c] == statesMap[q2]
+        result.table[ri][c] = statesMap[q2]
+        if c notin closures:
+          closures[c] = initHashSet[int16](2)
+        closures[c].incl(dfa.cs[dfa.closures[q][c]])
+    for c, closure in closures.pairs:
+      if closure in csRev:
+        result.closures[ri][c] = csRev[closure]
+      else:
+        result.closures[ri][c] = result.cs.len.int32
+        csRev[closure] = result.cs.len.int32
+        result.cs.add(closure)      
+  assert result.table.len == result.closures.len
+  assert result.cs.toHashSet.len == result.cs.len
+
+func reverse(dfa: Dfa): Dfa {.inline.} =
   ## return reversed dfa table
   result.table.setLen(dfa.table.len)
   for i in 0 .. dfa.table.len-1:
@@ -180,9 +222,9 @@ func delta(
       result.incl(q2)
 
 func canPartition(r, i: HashSet[int32]): bool {.inline.} =
-  ## return false if:
-  ## * R is a subset of I
-  ## * the intersection of R and I is empty
+  ## return true if:
+  ## * intersection of R and I is not empty,
+  ## * and the complement of R and I is not empty
   var intr = 0
   for q in r:
     intr += int(q in i)
@@ -212,6 +254,8 @@ func partition(
 # 43756 lines compiled; 16.145 sec total; 308.73MiB peakmem;
 # dfa.reverse and init all hashsets to 2, except q-f is 64
 # 43779 lines compiled; 12.209 sec total; 309.234MiB peakmem
+# optimized dfa table construction
+# 43825 lines compiled; 11.985 sec total; 258.664MiB peakmem;
 func minimize*(
   dfa: Dfa,
   alphabet: seq[AlphabetSym]
@@ -228,27 +272,26 @@ func minimize*(
   p.add(f)
   p.add(q - f)
   while w.len > 0:
-    let s = w.pop()
+    let s = w.pop
     for c in alphabet:  # XXX take alphabet from `for q in s: dfa[q]`
       let i = delta(dfaRev, s, c)
+      if i.len == 0:
+        continue
       for ri in 0 .. p.len-1:
         if not canPartition(r, i):
           continue
+        let wi = w.find r
         let (r1, r2) = partition(r, i)
-        p[ri] = r1
-        p.add(r2)
-        let wi = w.find(r)
+        r = r1
+        p.add r2
         if wi > -1:
           w[wi] = r1
-          w.add(r2)
+          w.add r2
         elif r1.len <= r2.len:
-          w.add(r1)
+          w.add r1
         else:
-          w.add(r2)
+          w.add r2
   assert p.len <= dfa.table.len, "not a min DFA, wtf?"
-  # XXX should reorder the whole thing to mirror
-  #     the DFA order for perf (no jumping around),
-  #     instead of just fixing the first state
   # make the initial state the first state
   var ri0 = -1
   for ri, r in p.pairs:
@@ -257,41 +300,7 @@ func minimize*(
       break
   assert ri0 > -1
   swap p[0], p[ri0]
-  # map DFA states to min-DFA states
-  var statesMap = newSeq[int32](dfa.table.len)
-  for i in 0 .. statesMap.len-1:
-    statesMap[i] = -1
-  for ri, r in p.pairs:
-    for q in r:
-      assert statesMap[q] == -1
-      statesMap[q] = ri.int32
-  # construct min-DFA table
-  result.table.setLen(p.len)
-  result.closures.setLen(p.len)
-  var closure = initHashSet[int16](2)
-  var qnext: int32
-  for ri, r in p.pairs:
-    result.table[ri] = initTable[AlphabetSym, int32](2)
-    result.closures[ri] = initTable[AlphabetSym, int32](2)
-    for c in alphabet:  # XXX iterate dfa.table[q] instead
-      qnext = -1'i32
-      closure.clear()
-      for q in r:  # r = new closure
-        if c notin dfa.table[q]:
-          continue
-        assert qnext == -1 or
-          statesMap[qnext] == statesMap[dfa.table[q][c]]
-        qnext = dfa.table[q][c]
-        closure.incl(dfa.cs[dfa.closures[q][c]])
-      if qnext == -1:
-        assert closure.len == 0
-        continue
-      assert closure.len > 0
-      assert c notin result.table[ri]
-      result.table[ri][c] = statesMap[qnext]
-      # XXX massive duplication, closure is likely already in cs
-      result.cs.add(closure)
-      result.closures[ri][c] = (result.cs.len-1).int32
+  result = minDfaTable(dfa, p)
 
 type
   CaptNode* = object

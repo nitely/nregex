@@ -24,7 +24,7 @@ template reImpl(s, flags: untyped): Regex =
     .transformExp(groups)
     .nfa(transitions)
     .dfa(alphabet)
-    #.minimize(alphabet)
+    .minimize(alphabet)
   Regex(
     dfa: dfa,
     transitions: transitions,
@@ -363,3 +363,43 @@ when isMainModule:
 
   doAssert match("abcabcabc", re"(?:(?:abc)){3}")
   doAssert match("abcabcabc", re"((abc)){3}")
+
+  block:
+    # unminimized == 7
+    const re1 = re"(11)*+(111)*"
+    doAssert re1.dfa.table.len == 4
+    doAssert match("", re1)
+    doAssert match("11", re1)
+    doAssert match("111", re1)
+    doAssert match("11111", re1)
+    doAssert match("1111111", re1)
+    doAssert match("1111111111", re1)
+    doAssert not match("1", re1)
+  block:
+    # unminimized == 9
+    const re1 = re"(11)+(111)*"
+    doAssert re1.dfa.table.len == 6
+    doAssert not match("", re1)
+    doAssert match("11", re1)
+    doAssert not match("111", re1)
+    doAssert match("11111", re1)
+  block:
+    # unminimized == 7
+    const re1 = re"(aabb)(ab)*"
+    doAssert re1.dfa.table.len == 6
+    doAssert match("aabb", re1)
+    doAssert match("aabbab", re1)
+    doAssert match("aabbabab", re1)
+    doAssert not match("ab", re1)
+    doAssert not match("aabbaba", re1)
+  block:
+    # unminimized == 4
+    const re1 = re"0(10)*"
+    doAssert re1.dfa.table.len == 3
+    doAssert match("0", re1)
+    doAssert match("010", re1)
+    doAssert not match("", re1)
+    doAssert not match("0101", re1)
+    doAssert not match("0100", re1)
+    doAssert not match("00", re1)
+    doAssert not match("000", re1)
