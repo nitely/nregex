@@ -7,6 +7,7 @@ import nregex/parser
 import nregex/exptransformation
 import nregex/nfa
 import nregex/dfa
+import nregex/dfamatch
 import nregex/dfamacro
 
 export
@@ -403,3 +404,11 @@ when isMainModule:
     doAssert not match("0100", re1)
     doAssert not match("00", re1)
     doAssert not match("000", re1)
+  block:
+    const re1 = re"(11)*|(111)*"
+    doAssert match("", re1)
+    doAssert match("11", re1)
+    doAssert match("111", re1)
+    doAssert match("1111", re1)
+    doAssert match("111111", re1)
+    doAssert not match("1", re1)

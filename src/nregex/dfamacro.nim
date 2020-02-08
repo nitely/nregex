@@ -10,6 +10,7 @@ import nodetype
 import nodematch
 import nfa
 import dfa
+import dfamatch
 
 macro genClosureTable(
   qt: int32,

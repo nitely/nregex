@@ -1584,10 +1584,49 @@ test "tmisc2":
     m.captures == @[@[0 .. 0, 1 .. 1, 2 .. 2], @[3 .. 3]]
   check "11222211".find(re"(22)+", m) and
     m.group(0) == @[2 .. 3, 4 .. 5]
-  doAssert match("650-253-0001", re"[0-9]+-[0-9]+-[0-9]+", m)
-  doAssert not match("abc-253-0001", re"[0-9]+-[0-9]+-[0-9]+", m)
-  doAssert not match("650-253", re"[0-9]+-[0-9]+-[0-9]+", m)
-  doAssert not match("650-253-0001-abc", re"[0-9]+-[0-9]+-[0-9]+", m)
-  doAssert match("650-253-0001", re"[0-9]+..*", m)
-  doAssert not match("abc-253-0001", re"[0-9]+..*", m)
-  doAssert not match("6", re"[0-9]+..*", m)
+  check match("650-253-0001", re"[0-9]+-[0-9]+-[0-9]+", m)
+  check not match("abc-253-0001", re"[0-9]+-[0-9]+-[0-9]+", m)
+  check not match("650-253", re"[0-9]+-[0-9]+-[0-9]+", m)
+  check not match("650-253-0001-abc", re"[0-9]+-[0-9]+-[0-9]+", m)
+  check match("650-253-0001", re"[0-9]+..*", m)
+  check not match("abc-253-0001", re"[0-9]+..*", m)
+  check not match("6", re"[0-9]+..*", m)
+  block:
+    const re1 = re"(11)*+(111)*"
+    check match("", re1)
+    check match("11", re1)
+    check match("111", re1)
+    check match("11111", re1)
+    check match("1111111", re1)
+    check match("1111111111", re1)
+    check not match("1", re1)
+  block:
+    const re1 = re"(11)+(111)*"
+    check not match("", re1)
+    check match("11", re1)
+    check not match("111", re1)
+    check match("11111", re1)
+  block:
+    const re1 = re"(aabb)(ab)*"
+    check match("aabb", re1)
+    check match("aabbab", re1)
+    check match("aabbabab", re1)
+    check not match("ab", re1)
+    check not match("aabbaba", re1)
+  block:
+    const re1 = re"0(10)*"
+    check match("0", re1)
+    check match("010", re1)
+    check not match("", re1)
+    check not match("0101", re1)
+    check not match("0100", re1)
+    check not match("00", re1)
+    check not match("000", re1)
+  block:
+    const re1 = re"(11)*|(111)*"
+    check match("", re1)
+    check match("11", re1)
+    check match("111", re1)
+    check match("1111", re1)
+    check match("111111", re1)
+    check not match("1", re1)
