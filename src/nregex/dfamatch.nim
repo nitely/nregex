@@ -51,8 +51,37 @@ func constructSubmatches*(
 type
   NodeIdx = int16
   CaptIdx = int32
-  Submatches* = seq[(NodeIdx, CaptIdx)]
+  Submatches* = ref object
     ## Parallel states would be a better name
+    sx: seq[(NodeIdx, CaptIdx)]
+    ss: set[int16]
+
+func newSubmatches*(): Submatches =
+  new Submatches
+
+func `[]`*(sm: Submatches, i: int): (NodeIdx, CaptIdx) {.inline.} =
+  sm.sx[i]
+
+func add*(sm: var Submatches, item: (NodeIdx, CaptIdx)) {.inline.} =
+  assert item[0] notin sm.ss
+  sm.sx.add(item)
+  sm.ss.incl(item[0])
+
+func len*(sm: Submatches): int {.inline.} =
+  sm.sx.len
+
+func hasState*(sm: Submatches, n: int16): bool {.inline.} =
+  n in sm.ss
+
+func clear*(sm: var Submatches) {.inline.} =
+  for i in 0 .. sm.sx.len-1:
+    assert sm.sx[i][0] in sm.ss
+    sm.ss.excl(sm.sx[i][0])
+  sm.sx.setLen(0)
+
+iterator items*(sm: Submatches): (NodeIdx, CaptIdx) {.inline.} =
+  for x in sm.sx:
+    yield x
 
 func submatch(
   smA, smB: var Submatches,
@@ -62,11 +91,13 @@ func submatch(
   i: int,
   cprev, c: int32
 ) {.inline.} =
-  smB.setLen(0)
+  smB.clear()
   var captx: int32
   var matched = true
   for n, capt in smA.items:
     for nti, nt in transitions.all[n].pairs:
+      if smB.hasState(nt):
+        continue
       if nt notin states:
         continue
       if transitions.allZ[n][nti] == -1'i16:
@@ -218,6 +249,8 @@ func matchImpl*(
     captLong {.used.} = -1
     iPrevLong {.used.} = start
   if regex.transitions.z.len > 0:
+    smA = newSubmatches()
+    smB = newSubmatches()
     smA.add((0'i16, -1'i32))
   #echo regex.dfa
   while i < len(text):

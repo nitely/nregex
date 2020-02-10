@@ -108,7 +108,7 @@ macro genSubmatch(
       doAssert inClosureBranch.len > 0
       let inClosureBranchStmt = newStmtList inClosureBranch
       branchBodyN.add(quote do:
-        if inClosure(`qt`, `ntLit`, regex):
+        if inClosure(`qt`, `ntLit`, regex) and not hasState(`smB`, `ntLit`):
           `inClosureBranchStmt`)
     doAssert branchBodyN.len > 0
     caseStmtN.add(newTree(nnkOfBranch,
@@ -136,7 +136,7 @@ func submatch(
     genSubmatch(
       n, c, qt, cPrev, capt, captx, i, matched, smB, capts, regex)
   swap(smA, smB)
-  smB.setLen(0)
+  smB.clear()
 
 macro genEoeTable(
   matched: bool,
@@ -296,9 +296,6 @@ func matchImpl*(
   m.clear()
   result = false
   var
-    smA {.used.}: Submatches
-    smB {.used.}: Submatches
-    capts {.used.}: Capts
     cPrev = -1'i32
     c: Rune
     q = 0'i32
@@ -313,6 +310,10 @@ func matchImpl*(
     groupCount {.used.} = regex.groupsCount
     namedGroups {.used.} = regex.namedGroups
   when hasTransionsZ:
+    var
+      smA = newSubmatches()
+      smB = newSubmatches()
+      capts: Capts
     smA.add((0'i16, -1'i32))
   while i < len(text):
     when reAscii notin reFlags:
