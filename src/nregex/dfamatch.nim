@@ -56,8 +56,9 @@ type
     sx: seq[(NodeIdx, CaptIdx)]
     ss: set[int16]
 
-func newSubmatches*(): Submatches =
-  new Submatches
+func newSubmatches*(): Submatches {.inline.} =
+  result = new Submatches
+  result.sx = newSeqOfCap[(NodeIdx, CaptIdx)](4)
 
 func `[]`*(sm: Submatches, i: int): (NodeIdx, CaptIdx) {.inline.} =
   sm.sx[i]
