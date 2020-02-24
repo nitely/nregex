@@ -25,9 +25,8 @@ type
 func constructSubmatches*(
   captures: var Captures,
   capts: Capts,
-  capt: int,
-  size: int
-) =
+  capt, size: int
+) {.inline.} =
   template currGroup: untyped = captures[capts[capt].idx]
   captures.setLen(size)
   for i in 0 .. captures.len-1:
@@ -54,35 +53,44 @@ type
   Submatches* = ref object
     ## Parallel states would be a better name
     sx: seq[(NodeIdx, CaptIdx)]
+    # use custom len because setLen(0) is slower,
+    # and {.noInit.} makes no difference
+    si: int
     ss: set[int16]
 
 func newSubmatches*(): Submatches {.inline.} =
   result = new Submatches
-  result.sx = newSeqOfCap[(NodeIdx, CaptIdx)](4)
+  result.sx = newSeq[(NodeIdx, CaptIdx)](8)
+  result.si = 0
 
 func `[]`*(sm: Submatches, i: int): (NodeIdx, CaptIdx) {.inline.} =
+  assert i < sm.si
   sm.sx[i]
 
 func add*(sm: var Submatches, item: (NodeIdx, CaptIdx)) {.inline.} =
   assert item[0] notin sm.ss
-  sm.sx.add(item)
+  assert sm.si <= sm.sx.len
+  if (sm.si == sm.sx.len).unlikely:
+    sm.sx.setLen(sm.sx.len * 2)
+  sm.sx[sm.si] = item
+  sm.si += 1 
   sm.ss.incl(item[0])
 
 func len*(sm: Submatches): int {.inline.} =
-  sm.sx.len
+  sm.si
 
 func hasState*(sm: Submatches, n: int16): bool {.inline.} =
   n in sm.ss
 
 func clear*(sm: var Submatches) {.inline.} =
-  for i in 0 .. sm.sx.len-1:
+  for i in 0 .. sm.len-1:
     assert sm.sx[i][0] in sm.ss
-    sm.ss.excl(sm.sx[i][0])
-  sm.sx.setLen(0)
+    sm.ss.excl sm.sx[i][0]
+  sm.si = 0
 
 iterator items*(sm: Submatches): (NodeIdx, CaptIdx) {.inline.} =
-  for x in sm.sx:
-    yield x
+  for i in 0 .. sm.len-1:
+    yield sm.sx[i]
 
 func submatch(
   smA, smB: var Submatches,
