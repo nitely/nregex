@@ -209,6 +209,7 @@ type
     allZ*: TransitionsAll
     z*: ZclosureStates
 
+# XXX do not add char classes transitions \w, \d, etc in ascii mode
 func eRemoval(
   eNfa: seq[Node],
   transitions: var Transitions

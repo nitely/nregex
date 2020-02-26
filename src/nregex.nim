@@ -241,8 +241,10 @@ func find*(
   var i = start
   var c: Rune
   while i < len(s):
-    result = matchImpl(s, pattern, m, {mfLongestMatch}, i)
+    result = matchImpl(s, pattern, m, {mfShortestMatch, mfNoCaptures}, i)
     if result:
+      result = matchImpl(s, pattern, m, {mfLongestMatch}, i)
+      doAssert result
       break
     fastRuneAt(s, i, c, true)
 

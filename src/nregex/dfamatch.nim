@@ -200,7 +200,7 @@ template longestMatchEnter(): untyped {.dirty.} =
   if symEoe in regex.dfa.table[q]:
     matchedLong = true
     iPrevLong = iPrev
-    if regex.transitions.z.len > 0:
+    if hasTransitionsZ:
       submatch(
         smA, smB, capts, regex.transitions,
         regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, c.int32)
@@ -210,7 +210,7 @@ template longestMatchEnter(): untyped {.dirty.} =
 
 template longestMatchExit(): untyped {.dirty.} =
   result = matchedLong
-  if regex.transitions.z.len > 0:
+  if hasTransitionsZ:
     constructSubmatches(m.captures, capts, captLong, regex.groupsCount)
     if regex.namedGroups.len > 0:
       m.namedGroups = regex.namedGroups
@@ -219,7 +219,7 @@ template longestMatchExit(): untyped {.dirty.} =
 
 template shortestMatch(): untyped {.dirty.} =
   if symEoe in regex.dfa.table[q]:
-    if regex.transitions.z.len > 0:
+    if hasTransitionsZ:
       submatch(
         smA, smB, capts, regex.transitions,
         regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, c.int32)
@@ -241,7 +241,12 @@ func matchImpl*(
   #echo dfa
   m.clear()
   result = false
-  let asciiMode = reAscii in regex.flags
+  let
+    asciiMode = reAscii in regex.flags
+    canSkipTransitionsZ = mfNoCaptures in flags and
+      regex.groupsCount * 2 == regex.transitions.z.len
+    hasTransitionsZ = regex.transitions.z.len > 0 and
+      not canSkipTransitionsZ
   var
     smA: Submatches
     smB: Submatches
@@ -257,7 +262,7 @@ func matchImpl*(
     matchedLong {.used.} = false
     captLong {.used.} = -1
     iPrevLong {.used.} = start
-  if regex.transitions.z.len > 0:
+  if hasTransitionsZ:
     smA = newSubmatches()
     smB = newSubmatches()
     smA.add((0'i16, -1'i32))
@@ -283,7 +288,7 @@ func matchImpl*(
           longestMatchExit()
         else:
           return
-    if regex.transitions.z.len > 0:
+    if hasTransitionsZ:
       submatch(
         smA, smB, capts, regex.transitions,
         regex.dfa.cs[regex.dfa.closures[q][cSym]], iPrev, cPrev, c.int32)
@@ -296,7 +301,7 @@ func matchImpl*(
     when mfLongestMatch in flags:
       longestMatchExit()
     return
-  if regex.transitions.z.len > 0:
+  if hasTransitionsZ:
     submatch(
       smA, smB, capts, regex.transitions,
       regex.dfa.cs[regex.dfa.closures[q][symEoe]], iPrev, cPrev, -1'i32)

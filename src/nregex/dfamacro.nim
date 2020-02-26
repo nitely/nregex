@@ -303,13 +303,21 @@ func matchImpl*(
     qt = q
     i = start
     iPrev = start
+  # workaround for VM registry limitation
+  const
+    tzLen = regex.transitions.z.len
+    groupTransitionsLen = regex.groupsCount * 2
+    noCaptures = mfNoCaptures in flags
   # workaround for https://github.com/nim-lang/Nim/issues/13252
   const
     reFlags = regex.flags
-    hasTransionsZ = regex.transitions.z.len > 0
+    canSkipTransitionsZ = noCaptures and
+      groupTransitionsLen == tzLen
+    hasTransitionsZ = tzLen > 0 and
+      not canSkipTransitionsZ
     groupCount {.used.} = regex.groupsCount
     namedGroups {.used.} = regex.namedGroups
-  when hasTransionsZ:
+  when hasTransitionsZ:
     var
       smA = newSubmatches()
       smB = newSubmatches()
@@ -329,12 +337,12 @@ func matchImpl*(
         genSymMatchTable(q, qt, c.int32, regex)
       if (q == -1'i32).unlikely:
         return
-    when hasTransionsZ:
+    when hasTransitionsZ:
       submatch(smA, smB, capts, regex, iPrev, qt, cPrev, c.int32)
     iPrev = i
     cPrev = c.int32
   genEoeTable(result, q, qt, regex)
-  when hasTransionsZ:
+  when hasTransitionsZ:
     if not result:
       return
     # XXX lighter submatchEoe
