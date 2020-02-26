@@ -305,15 +305,15 @@ func matchImpl*(
     iPrev = start
   # workaround for VM registry limitation
   const
-    tzLen = regex.transitions.z.len
-    groupTransitionsLen = regex.groupsCount * 2
+    zCount = regex.transitions.zCount
+    zGroupsCount = regex.groupsCount * 2
     noCaptures = mfNoCaptures in flags
   # workaround for https://github.com/nim-lang/Nim/issues/13252
   const
     reFlags = regex.flags
     canSkipTransitionsZ = noCaptures and
-      groupTransitionsLen == tzLen
-    hasTransitionsZ = tzLen > 0 and
+      zGroupsCount == zCount
+    hasTransitionsZ = zCount > 0 and
       not canSkipTransitionsZ
     groupCount {.used.} = regex.groupsCount
     namedGroups {.used.} = regex.namedGroups

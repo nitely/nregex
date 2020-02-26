@@ -244,8 +244,8 @@ func matchImpl*(
   let
     asciiMode = reAscii in regex.flags
     canSkipTransitionsZ = mfNoCaptures in flags and
-      regex.groupsCount * 2 == regex.transitions.z.len
-    hasTransitionsZ = regex.transitions.z.len > 0 and
+      regex.groupsCount * 2 == regex.transitions.zCount
+    hasTransitionsZ = regex.transitions.zCount > 0 and
       not canSkipTransitionsZ
   var
     smA: Submatches

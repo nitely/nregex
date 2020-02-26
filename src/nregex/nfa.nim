@@ -172,6 +172,11 @@ func isTransitionZ(n: Node): bool {.inline.} =
     else:
       false
 
+func countTransitionsZ(nfa: seq[Node]): int =
+  result = 0
+  for n in nfa:
+    result += int(n.isTransitionZ)
+
 func teClosure(
   result: var TeClosure,
   nfa: seq[Node],
@@ -208,6 +213,7 @@ type
     all*: TransitionsAll
     allZ*: TransitionsAll
     z*: ZclosureStates
+    zCount*: int
 
 # XXX do not add char classes transitions \w, \d, etc in ascii mode
 func eRemoval(
@@ -261,6 +267,9 @@ func eRemoval(
         qw.addFirst(qb)
   transitions.all.setLen(statePos)
   transitions.allZ.setLen(statePos)
+  if transitions.z.len == 0:
+    transitions.allZ = @[]
+  transitions.zCount = eNfa.countTransitionsZ
   result = newSeq[Node](statePos)
   for en, nn in statesMap.pairs:
     if nn == -1:
