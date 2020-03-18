@@ -1,6 +1,6 @@
 # Package
 
-version = "0.0.2"
+version = "0.0.3"
 author = "Esteban Castro Borsani (@nitely)"
 description = "A DFA based regex engine"
 license = "MIT"
