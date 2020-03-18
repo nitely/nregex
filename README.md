@@ -17,7 +17,7 @@ Nim +1.0.4
 ## Usage
 
 ```nim
-import nregex
+import pkg/nregex
 
 var m: RegexMatch
 doAssert match("abc", re"abc", m)

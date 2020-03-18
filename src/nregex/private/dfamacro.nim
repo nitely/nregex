@@ -1,9 +1,9 @@
-import sets
-import tables
-import unicode
-import macros
+import std/sets
+import std/tables
+import std/unicode
+import std/macros
 
-import unicodeplus except isUpper, isLower
+import pkg/unicodeplus except isUpper, isLower
 
 import common
 import nodetype

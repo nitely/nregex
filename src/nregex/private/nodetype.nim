@@ -1,7 +1,7 @@
-import unicode
-import sets
+import std/unicode
+import std/sets
 
-import unicodedb/properties
+import pkg/unicodedb/properties
 
 import common
 

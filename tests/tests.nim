@@ -1,4 +1,5 @@
-import nregex
+from std/sequtils import map
+import pkg/nregex
 
 template test(desc: string, body: untyped): untyped =
   when defined(runTestAtCT):
@@ -62,6 +63,12 @@ proc findWithCapt(s: string, pattern: Regex): seq[seq[string]] =
   var m: RegexMatch
   doAssert find(s, pattern, m)
   result = m.toStrCaptures(s)
+
+func findAllBounds(s: string, reg: Regex): seq[Slice[int]] =
+  result = map(
+    findAll(s, reg),
+    func (m: RegexMatch): Slice[int] =
+      m.boundaries)
 
 test "tfull_match":
   check "".isMatch(re"")
@@ -932,22 +939,24 @@ test "tsplitIncl":
   check splitIncl("1 2", re" ") == @["1", "2"]
   check splitIncl("foo", re"foo") == @["", ""]
   check splitIncl("", re"foo") == @[""]
+]#
 
 test "tfindall":
-  check findAllb("abcabc", re"bc") == @[1 .. 2, 4 .. 5]
-  check findAllb("aa", re"a") == @[0 .. 0, 1 .. 1]
-  check findAllb("a", re"a") == @[0 .. 0]
-  check findAllb("a", re"b") == newSeq[Slice[int]]()
-  check findAllb("", re"b") == newSeq[Slice[int]]()
-  check findAllb("a", re"") == @[0 .. -1]
-  check findAllb("ab", re"") == @[0 .. -1, 1 .. 0]
-  check findAllb("a", re"\b") == @[0 .. -1]
-  check findAllb("aΪⒶ弢", re"Ϊ") == @[1 .. 2]
-  check findAllb("aΪⒶ弢", re"Ⓐ") == @[3 .. 5]
-  check findAllb("aΪⒶ弢", re"弢") == @[6 .. 9]
-  check findAllb("aΪⒶ弢aΪⒶ弢", re"Ⓐ") == @[3 .. 5, 13 .. 15]
-  check findAllb("aaa", re"a*") == @[0 .. 2]
+  check findAllBounds("abcabc", re"bc") == @[1 .. 2, 4 .. 5]
+  check findAllBounds("aa", re"a") == @[0 .. 0, 1 .. 1]
+  check findAllBounds("a", re"a") == @[0 .. 0]
+  check findAllBounds("a", re"b") == newSeq[Slice[int]]()
+  check findAllBounds("", re"b") == newSeq[Slice[int]]()
+  check findAllBounds("a", re"") == @[0 .. -1]
+  check findAllBounds("ab", re"") == @[0 .. -1, 1 .. 0]
+  check findAllBounds("a", re"\b") == @[0 .. -1]
+  check findAllBounds("aΪⒶ弢", re"Ϊ") == @[1 .. 2]
+  check findAllBounds("aΪⒶ弢", re"Ⓐ") == @[3 .. 5]
+  check findAllBounds("aΪⒶ弢", re"弢") == @[6 .. 9]
+  check findAllBounds("aΪⒶ弢aΪⒶ弢", re"Ⓐ") == @[3 .. 5, 13 .. 15]
+  check findAllBounds("aaa", re"a*") == @[0 .. 2]
 
+#[
 test "tfindandcaptureall":
   check findAndCaptureAll("abcabc", re"bc") == @["bc", "bc"]
   check findAndCaptureAll("a1b2c3a4b5c6", re"\d") == @["1", "2", "3", "4", "5", "6"]

@@ -1,12 +1,12 @@
 ## DFA matcher for non-static regexes
 
-import unicode
-import sets
-import tables
-import deques
-import algorithm
+import std/unicode
+import std/sets
+import std/tables
+import std/deques
+import std/algorithm
 
-import unicodeplus except isUpper, isLower
+import pkg/unicodeplus except isUpper, isLower
 
 import nodematch
 import nodetype

@@ -1,9 +1,9 @@
-import unicode
-import sets
+import std/unicode
+import std/sets
 
-import unicodedb/properties
-import unicodedb/types
-import unicodeplus except isUpper, isLower
+import pkg/unicodedb/properties
+import pkg/unicodedb/types
+import pkg/unicodeplus except isUpper, isLower
 
 import nodetype
 import common

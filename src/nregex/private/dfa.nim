@@ -1,7 +1,7 @@
-import unicode
-import sets
-import tables
-import deques
+import std/unicode
+import std/sets
+import std/tables
+import std/deques
 
 import nodematch
 import nodetype

@@ -1,5 +1,5 @@
-import unicode
-import strutils
+import std/unicode
+import std/strutils
 
 type
   RegexError* = object of ValueError

@@ -1,14 +1,165 @@
-import tables
-import sequtils
-import unicode
+##[
+A library for parsing, compiling, and executing
+regular expressions. The match time is linear
+in the length of the input. So, it can handle
+input from untrusted users. The syntax is similar to PCRE
+but lacks a few features that can not be implemented
+while keeping the space/time complexity guarantees,
+i.e.: backreferences and look-around assertions.
 
-import nregex/common
-import nregex/parser
-import nregex/exptransformation
-import nregex/nfa
-import nregex/dfa
-import nregex/dfamatch
-import nregex/dfamacro
+Syntax
+******
+
+Matching one character
+######################
+
+.. code-block::
+  .          any character except new line (includes new line with s flag)
+  \d         digit (\p{Nd})
+  \D         not digit
+  \pN        One-letter name Unicode character class
+  \p{Greek}  Unicode character class (general category or script)
+  \PN        Negated one-letter name Unicode character class
+  \P{Greek}  negated Unicode character class (general category or script)
+
+Character classes
+#################
+
+.. code-block::
+  [xyz]         A character class matching either x, y or z (union).
+  [^xyz]        A character class matching any character except x, y and z.
+  [a-z]         A character class matching any character in range a-z.
+  [[:alpha:]]   ASCII character class ([A-Za-z])
+  [[:^alpha:]]  Negated ASCII character class ([^A-Za-z])
+  [\[\]]        Escaping in character classes (matching [ or ])
+
+Composites
+##########
+
+.. code-block::
+  xy   concatenation (x followed by y)
+  x|y  alternation (x or y, prefer x)
+
+Repetitions
+###########
+
+.. code-block::
+  x*       zero or more of x (greedy)
+  x+       one or more of x (greedy)
+  x?       zero or one of x (greedy)
+  x*?      zero or more of x (ungreedy/lazy)
+  x+?      one or more of x (ungreedy/lazy)
+  x??      zero or one of x (ungreedy/lazy)
+  x{n,m}   at least n x and at most m x (greedy)
+  x{n,}    at least n x (greedy)
+  x{n}     exactly n x
+  x{n,m}?  at least n x and at most m x (ungreedy/lazy)
+  x{n,}?   at least n x (ungreedy/lazy)
+  x{n}?    exactly n x
+
+Empty matches
+#############
+
+.. code-block::
+  ^   the beginning of text (or start-of-line with multi-line mode)
+  $   the end of text (or end-of-line with multi-line mode)
+  \A  only the beginning of text (even with multi-line mode enabled)
+  \z  only the end of text (even with multi-line mode enabled)
+  \b  a Unicode word boundary (\w on one side and \W, \A, or \z on other)
+  \B  not a Unicode word boundary
+
+Grouping and flags
+##################
+
+.. code-block::
+  (exp)          numbered capture group (indexed by opening parenthesis)
+  (?P<name>exp)  named (also numbered) capture group (allowed chars: [_0-9a-zA-Z])
+  (?:exp)        non-capturing group
+  (?flags)       set flags within current group
+  (?flags:exp)   set flags for exp (non-capturing)
+
+Flags are each a single character. For example,
+(?x) sets the flag x and (?-x) clears the flag x.
+Multiple flags can be set or cleared at the same
+time: (?xy) sets both the x and y flags, (?x-y)
+sets the x flag and clears the y flag, and (?-xy)
+clears both the x and y flags.
+
+.. code-block::
+  i  case-insensitive: letters match both upper and lower case
+  m  multi-line mode: ^ and $ match begin/end of line
+  s  allow . to match \L (new line)
+  U  swap the meaning of x* and x*? (un-greedy mode)
+  u  Unicode support (enabled by default)
+  x  ignore whitespace and allow line comments (starting with `#`)
+
+`All flags are disabled by default unless stated otherwise`
+
+Escape sequences
+################
+
+.. code-block::
+  \*         literal *, works for any punctuation character: \.+*?()|[]{}^$
+  \a         bell (\x07)
+  \f         form feed (\x0C)
+  \t         horizontal tab
+  \n         new line (\L)
+  \r         carriage return
+  \v         vertical tab (\x0B)
+  \123       octal character code (up to three digits)
+  \x7F       hex character code (exactly two digits)
+  \x{10FFFF} any hex character code corresponding to a Unicode code point
+  \u007F     hex character code (exactly four digits)
+  \U0010FFFF hex character code (exactly eight digits)
+
+Perl character classes (Unicode friendly)
+#########################################
+
+These classes are based on the definitions provided in
+`UTS#18 <http://www.unicode.org/reports/tr18/#Compatibility_Properties>`_
+
+.. code-block::
+  \d  digit (\p{Nd})
+  \D  not digit
+  \s  whitespace (\p{White_Space})
+  \S  not whitespace
+  \w  word character (\p{Alphabetic} + \p{M} + \d + \p{Pc} + \p{Join_Control})
+  \W  not word character
+
+ASCII character classes
+#######################
+
+.. code-block::
+  [[:alnum:]]   alphanumeric ([0-9A-Za-z])
+  [[:alpha:]]   alphabetic ([A-Za-z])
+  [[:ascii:]]   ASCII ([\x00-\x7F])
+  [[:blank:]]   blank ([\t ])
+  [[:cntrl:]]   control ([\x00-\x1F\x7F])
+  [[:digit:]]   digits ([0-9])
+  [[:graph:]]   graphical ([!-~])
+  [[:lower:]]   lower case ([a-z])
+  [[:print:]]   printable ([ -~])
+  [[:punct:]]   punctuation ([!-/:-@\[-`{-~])
+  [[:space:]]   whitespace ([\t\n\v\f\r ])
+  [[:upper:]]   upper case ([A-Z])
+  [[:word:]]    word characters ([0-9A-Za-z_])
+  [[:xdigit:]]  hex digit ([0-9A-Fa-f])
+
+]##
+
+import std/tables
+import std/sequtils
+import std/unicode
+
+import nregex/private/[
+  common,
+  parser,
+  exptransformation,
+  nfa,
+  dfa,
+  dfamatch,
+  dfamacro
+]
 
 export
   Regex,
@@ -248,6 +399,33 @@ func find*(
       break
     fastRuneAt(s, i, c, true)
 
+iterator findAll*(
+  s: string,
+  pattern: Regex,
+  start = 0
+): RegexMatch {.inline.} =
+  ## Find all non-overlapping matches
+  var i = start
+  var c: Rune
+  var m: RegexMatch
+  while i < len(s):
+    if find(s, pattern, m, i):
+      if i < m.boundaries.b+1:
+        i = m.boundaries.b+1
+      else:
+        fastRuneAt(s, i, c, true)
+      yield m
+    else:
+      fastRuneAt(s, i, c, true)
+
+func findAll*(
+  s: string,
+  pattern: Regex,
+  start = 0
+): seq[RegexMatch] {.inline.} =
+  for m in findAll(s, pattern, start):
+    result.add m
+
 when isMainModule:
   var m: RegexMatch
 
@@ -414,3 +592,12 @@ when isMainModule:
     doAssert match("1111", re1)
     doAssert match("111111", re1)
     doAssert not match("1", re1)
+
+  func findAllBounds(s: string, reg: Regex): seq[Slice[int]] =
+    result = map(
+      findAll(s, reg),
+      func (m: RegexMatch): Slice[int] =
+        m.boundaries)
+
+  doAssert findAllBounds("abcabc", re"bc") == @[1 .. 2, 4 .. 5]
+  doAssert findAllBounds("aΪⒶ弢aΪⒶ弢", re"Ⓐ") == @[3 .. 5, 13 .. 15]

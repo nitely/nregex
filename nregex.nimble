@@ -26,4 +26,4 @@ task test, "Test":
   exec "nim doc -o:./docs/ugh/ugh.html ./src/nregex.nim"
 
 task docs, "Docs":
-  exec "nim doc -o:./docs/index.html ./src/nregex.nim"
+  exec "nim doc --project -o:./docs ./src/nregex.nim"
