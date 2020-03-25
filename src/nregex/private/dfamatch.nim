@@ -55,37 +55,35 @@ type
     sx: seq[(NodeIdx, CaptIdx)]
     # use custom len because setLen(0) is slower,
     # and {.noInit.} makes no difference
-    si: int
-    ss: set[int16]
+    si: int16
+    ss: seq[int16]
 
-func newSubmatches*(): Submatches {.inline.} =
+func newSubmatches*(size: int): Submatches {.inline.} =
   result = new Submatches
   result.sx = newSeq[(NodeIdx, CaptIdx)](8)
+  result.ss = newSeq[int16](size)
   result.si = 0
 
 func `[]`*(sm: Submatches, i: int): (NodeIdx, CaptIdx) {.inline.} =
   assert i < sm.si
   sm.sx[i]
 
+func hasState*(sm: Submatches, n: int16): bool {.inline.} =
+  sm.ss[n] < sm.si and sm.sx[sm.ss[n]][0] == n
+
 func add*(sm: var Submatches, item: (NodeIdx, CaptIdx)) {.inline.} =
-  assert item[0] notin sm.ss
+  assert not sm.hasState(item[0])
   assert sm.si <= sm.sx.len
   if (sm.si == sm.sx.len).unlikely:
     sm.sx.setLen(sm.sx.len * 2)
   sm.sx[sm.si] = item
-  sm.si += 1 
-  sm.ss.incl(item[0])
+  sm.ss[item[0]] = sm.si
+  sm.si += 1'i16
 
 func len*(sm: Submatches): int {.inline.} =
   sm.si
 
-func hasState*(sm: Submatches, n: int16): bool {.inline.} =
-  n in sm.ss
-
 func clear*(sm: var Submatches) {.inline.} =
-  for i in 0 .. sm.len-1:
-    assert sm.sx[i][0] in sm.ss
-    sm.ss.excl sm.sx[i][0]
   sm.si = 0
 
 iterator items*(sm: Submatches): (NodeIdx, CaptIdx) {.inline.} =
@@ -263,8 +261,8 @@ func matchImpl*(
     captLong {.used.} = -1
     iPrevLong {.used.} = start
   if hasTransitionsZ:
-    smA = newSubmatches()
-    smB = newSubmatches()
+    smA = newSubmatches(regex.transitions.all.len)
+    smB = newSubmatches(regex.transitions.all.len)
     smA.add((0'i16, -1'i32))
   #echo regex.dfa
   while i < len(text):

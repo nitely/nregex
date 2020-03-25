@@ -123,13 +123,9 @@ macro genSubmatch(
     echo "==== genSubmatch ===="
     echo repr(result)
 
-func submatch(
-  smA, smB: var Submatches,
-  capts: var Capts,
-  regex: static Regex,
-  i: int,
-  qt, cprev, c: int32
-) {.inline.} =
+template submatch(
+  smA, smB, capts, regex, i, qt, cprev, c: untyped
+): untyped =
   var captx: int32
   var matched = true
   for n, capt in smA.items:
@@ -319,8 +315,8 @@ func matchImpl*(
     namedGroups {.used.} = regex.namedGroups
   when hasTransitionsZ:
     var
-      smA = newSubmatches()
-      smB = newSubmatches()
+      smA = newSubmatches(regex.transitions.all.len)
+      smB = newSubmatches(regex.transitions.all.len)
       capts: Capts
     smA.add((0'i16, -1'i32))
   while i < len(text):
