@@ -3,7 +3,7 @@ import std/sets
 
 import pkg/unicodedb/properties
 import pkg/unicodedb/types
-import pkg/unicodeplus except isUpper, isLower
+import pkg/unicodeplus
 
 import nodetype
 import common
@@ -23,12 +23,9 @@ func isWordAscii(r: Rune): bool {.inline.} =
   else:
     false
 
-template isWordBoundaryImpl(r, nxt, alnumProc): bool =
-  let
-    isWord = r != invalidRune and alnumProc(r)
-    isNxtWord = nxt != invalidRune and alnumProc(nxt)
-  ((isWord and not isNxtWord) or
-   (not isWord and isNxtWord))
+template isWordBoundaryImpl(r, nxt, isWordProc): bool =
+  (r.int > -1 and isWordProc(r)) xor
+    (nxt.int > -1 and isWordProc(nxt))
 
 func isWordBoundary(r: Rune, nxt: Rune): bool {.inline.} =
   ## check if current match
@@ -108,17 +105,11 @@ func isAnyAscii(r: Rune): bool {.inline.} =
   (r.int <= int8.high and
    r != lineBreakRune)
 
-# todo: can not use unicodeplus due to
-# https://github.com/nim-lang/Nim/issues/7059
-func swapCase*(r: Rune): Rune =
-  # Note a character can be
-  # non-lower and non-upper
-  if r.isUpper():
-    result = r.toLower()
-  elif r.isLower():
-    result = r.toUpper()
-  else:
-    result = r
+func swapCase(r: Rune): Rune =
+  result = r.toLower()
+  if result != r:
+    return
+  result = r.toUpper()
 
 func match*(n: Node, r: Rune): bool =
   ## match for ``Node`` of matchable kind.

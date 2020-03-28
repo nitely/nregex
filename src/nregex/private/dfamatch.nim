@@ -16,9 +16,9 @@ import dfa
 
 type
   CaptNode* = object
-    parent*: int
+    parent*: int32
     bound*: int
-    idx*: int
+    idx*: int16
   Capts* = seq[CaptNode]
   Captures* = seq[seq[Slice[int]]]
 
