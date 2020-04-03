@@ -409,14 +409,13 @@ iterator findAll*(
   var c: Rune
   var m: RegexMatch
   while i < len(s):
-    if find(s, pattern, m, i):
-      if i < m.boundaries.b+1:
-        i = m.boundaries.b+1
-      else:
-        fastRuneAt(s, i, c, true)
-      yield m
-    else:
+    if not find(s, pattern, m, i):
+      break
+    if i < m.boundaries.b+1:
+      i = m.boundaries.b+1
+    else:  # empty match
       fastRuneAt(s, i, c, true)
+    yield m
 
 func findAll*(
   s: string,

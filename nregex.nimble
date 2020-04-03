@@ -1,11 +1,11 @@
 # Package
 
-version = "0.0.3"
+version = "0.0.4"
 author = "Esteban Castro Borsani (@nitely)"
 description = "A DFA based regex engine"
 license = "MIT"
 srcDir = "src"
-skipDirs = @["tests"]
+skipDirs = @["tests", "docs"]
 
 requires "nim >= 1.0.4"
 requires "unicodedb >= 0.7.2"
@@ -15,9 +15,8 @@ task test, "Test":
   exec "nim c -r -o:bin/nregex src/nregex.nim"
   exec "nim c -r tests/tests.nim"
   exec "nim c -r -d:forceRegexAtRuntime tests/tests.nim"
-  # VM register limit error, works on devel,
-  # well almost due to https://github.com/nim-lang/Nim/issues/13310
-  #exec "nim c -d:runTestAtCT tests/tests.nim"
+  #when (NimMajor, NimMinor) >= (1, 1):
+  #  exec "nim c -d:runTestAtCT --maxLoopIterationsVM:1000000000 tests/tests.nim"
   exec "nim js -r -o:bin/nregex.js --styleCheck:off src/nregex.nim"
   exec "nim js -r --styleCheck:off tests/tests.nim"
   exec "nim js -r --styleCheck:off -d:forceRegexAtRuntime tests/tests.nim"

@@ -105,7 +105,7 @@ func isAnyAscii(r: Rune): bool {.inline.} =
   (r.int <= int8.high and
    r != lineBreakRune)
 
-func swapCase(r: Rune): Rune =
+func swapCase*(r: Rune): Rune =
   result = r.toLower()
   if result != r:
     return
