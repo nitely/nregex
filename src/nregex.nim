@@ -153,49 +153,17 @@ import std/unicode
 
 import nregex/private/[
   common,
-  parser,
-  exptransformation,
-  nfa,
-  dfa,
+  compiler,
   dfamatch,
-  dfamacro
+  #dfamacro
 ]
 
 export
+  re,
   Regex,
   RegexMatch,
   RegexFlag,
   RegexError
-
-template reImpl(s, flags: untyped): Regex =
-  var groups: GroupsCapture
-  var transitions: Transitions
-  var alphabet: seq[AlphabetSym]
-  let dfa = s
-    .parse
-    .transformExp(groups)
-    .nfa(transitions)
-    .dfa(alphabet)
-    .minimize(alphabet)
-  Regex(
-    dfa: dfa,
-    transitions: transitions,
-    groupsCount: groups.count,
-    namedGroups: groups.names,
-    flags: flags)
-
-func re*(
-  s: string,
-  flags: set[RegexFlag] = {}
-): Regex {.inline.} =
-  reImpl(s, flags)
-
-when not defined(forceRegexAtRuntime):
-  func re*(
-    s: static string,
-    flags: static set[RegexFlag] = {}
-  ): static Regex {.inline.} =
-    reImpl(s, flags)
 
 iterator group*(m: RegexMatch, i: int): Slice[int] =
   ## return slices for a given group.
@@ -321,33 +289,6 @@ func isInitialized*(re: Regex): bool {.inline.} =
     doAssert re.isInitialized
 
   re.dfa.table.len > 0
-
-when not defined(forceRegexAtRuntime):
-  func match*(
-    s: string,
-    pattern: static Regex,
-    m: var RegexMatch,
-    start = 0
-  ): bool {.inline.} =
-    ## return a match if the whole string
-    ## matches the regular expression. This
-    ## is similar to ``find(text, re"^regex$", m)``,
-    ## but has better performance
-    runnableExamples:
-      var m: RegexMatch
-      doAssert "abcd".match(re"abcd", m)
-      doAssert not "abcd".match(re"abc", m)
-
-    const f: MatchFlags = {}
-    result = matchImpl(s, pattern, m, f, start)
-
-  func match*(s: string, pattern: static Regex): bool {.inline.} =
-    runnableExamples:
-      doAssert "abcd".match(re"abcd")
-      doAssert not "abcd".match(re"abc")
-
-    var m: RegexMatch
-    result = matchImpl(s, pattern, m, {mfNoCaptures})
 
 func match*(
   s: string,
