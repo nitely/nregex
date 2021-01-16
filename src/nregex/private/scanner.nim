@@ -1,7 +1,7 @@
 import std/unicode
 
-import nodetype
-import common
+import ./types
+import ./common
 
 type
   Scanner*[T: Rune|Node] = ref object
@@ -67,6 +67,12 @@ func peek*(sc: Scanner[Node]): Node =
 iterator peek*[T](sc: Scanner[T]): (T, T) =
   for s in sc:
     yield (s, sc.peek)
+
+func peek*(sc: Scanner[Rune], n: int): Rune =
+  if sc.pos+n > sc.s.len-1:
+    invalidRune
+  else:
+    sc.s[sc.pos+n]
 
 func find*(sc: Scanner[Rune], r: Rune): int =
   ## return number of consumed chars.

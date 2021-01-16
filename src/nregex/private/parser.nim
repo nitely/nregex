@@ -1,16 +1,16 @@
 import std/unicode
-import std/algorithm
 import std/strutils
 import std/sets
 import std/parseutils
 
 import pkg/unicodedb/properties
 
-import nodetype
-import common
-import scanner
+import ./exptype
+import ./types
+import ./common
+import ./scanner
 
-func check(cond: bool, msg: string) =
+func check(cond: bool, msg: string) {.inline.} =
   if not cond:
     raise newException(RegexError, msg)
 
@@ -50,64 +50,6 @@ func check(cond: bool, msg: string, at: int, exp: string) =
 
 template prettyCheck(cond: bool, msg: string) {.dirty.} =
   check(cond, msg, startPos, sc.raw)
-
-func `$`(n: Node): string =
-  ## return the string representation
-  ## of a `Node`. The string is always
-  ## equivalent to the original
-  ## expression but not necessarily equal
-  # Note this is not complete. Just
-  # what needed for debugging so far
-  case n.kind
-  of reZeroOrMore,
-      reOneOrMore,
-      reZeroOrOne:
-    if n.isGreedy:
-      n.cp.toUTF8 & "?"
-    else:
-      n.cp.toUTF8
-  of reRepRange:
-    "#"  # Invalid
-  of reStart:
-    "\\A"
-  of reEnd:
-    "\\z"
-  of reWordBoundary:
-    "\\b"
-  of reNotWordBoundary:
-    "\\B"
-  of shorthandKind:
-    '\\' & n.cp.toUTF8
-  of reInSet, reNotSet:
-    var str = ""
-    str.add('[')
-    if n.kind == reNotSet:
-      str.add('^')
-    var
-      cps = newSeq[Rune](n.cps.len)
-      i = 0
-    for cp in n.cps:
-      cps[i] = cp
-      inc i
-    for cp in cps.sorted(cmp):
-      str.add(cp.toUTF8)
-    for sl in n.ranges:
-      str.add(sl.a.toUTF8 & '-' & sl.b.toUTF8)
-    for nn in n.shorthands:
-      str.add($nn)
-    str.add(']')
-    str
-  of reSkip:
-    "SKIP"
-  of reEOE:
-    "EOE"
-  else:
-    n.cp.toUTF8
-
-#proc `$`(n: seq[Node]): string {.used.} =
-#  result = newStringOfCap(n.len)
-#  for nn in n:
-#    result.add($nn)
 
 func toShorthandNode(r: Rune): Node =
   ## the given character must be a shorthand or
@@ -486,31 +428,51 @@ func parseSet(sc: Scanner[Rune]): Node =
     hasEnd,
     "Invalid set. Missing `]`")
 
+func noRepeatCheck(sc: Scanner[Rune]) =
+  ## Check next symbol is not a repetition
+  let startPos = sc.pos
+  let hasDoubleQ = sc.peek == '?'.Rune and sc.peek(1) == '?'.Rune
+  prettyCheck(
+    sc.peek notin ['*'.Rune, '+'.Rune] and not hasDoubleQ,
+    "Invalid repetition. There's nothing to repeat")
+
 func parseRepRange(sc: Scanner[Rune]): Node =
   ## parse a repetition range ``{n,m}``
+  # This is not PCRE compatible. PCRE allows
+  # {,} and {,1} to be parsed as chars instead of a
+  # repetition range, we raise an error instead.
+  if sc.peek.int != ','.ord and
+      sc.peek.int notin '0'.ord .. '9'.ord:
+    return Node(kind: reChar, cp: '{'.Rune)
   let startPos = sc.pos
   var
     first, last: string
     hasFirst = false
     curr = ""
   for cp in sc:
-    if cp == "}".toRune:
+    if cp == '}'.Rune:
       last = curr
       break
-    if cp == ",".toRune:
+    if cp == ','.Rune:
       first = curr
       curr = ""
+      prettyCheck(
+        not hasFirst, "Invalid repetition range. Expected {n,m}")
       hasFirst = true
       continue
     prettyCheck(
       cp.int in '0'.ord .. '9'.ord,
       "Invalid repetition range. Range can only contain digits")
-    curr.add(char(cp.int))
+    curr.add char(cp.int)
+  prettyCheck(
+    sc.prev == '}'.Rune,
+    "Invalid repetition range. Missing closing symbol `}`")
   if not hasFirst:  # {n}
     first = curr
-  if first.len == 0:  # {,m} or {,}
-    first.add('0')
-  if last.len == 0:  # {n,} or {,}
+  prettyCheck(
+    first.len > 0,
+    "Invalid repetition range. Expected {n}, {n,m}, or {n,}")
+  if last.len == 0:  # {n,}
     last = "-1"
   var
     firstNum: int
@@ -541,6 +503,7 @@ func parseRepRange(sc: Scanner[Rune]): Node =
     kind: reRepRange,
     min: firstNum.int16,
     max: lastNum.int16)
+  noRepeatCheck sc
 
 func toFlag(r: Rune): Flag =
   result = case r
@@ -659,28 +622,32 @@ func parseGroupTag(sc: Scanner[Rune]): Node =
       isCapturing = false)
   #reLookahead,
   #reLookbehind,
-  of "=".toRune:
-    discard sc.next()
-    # todo: support sets and more
+  of '='.Rune, '<'.Rune, '!'.Rune:
+    var lookAroundKind: NodeKind
     case sc.peek
-    of "\\".toRune:
-      let n = parseEscapedSeq(sc)
-      prettyCheck(
-        n.kind == reChar,
-        "Invalid lookahead. A " &
-        "character was expected, but " &
-        "found a special symbol")
-      result = Node(kind: reLookahead, cp: n.cp)
+    of '='.Rune:
+      lookAroundKind = reLookahead
+    of '!'.Rune:
+      lookAroundKind = reNotLookahead
+    of '<'.Rune:
+      discard sc.next()
+      case sc.peek:
+      of '='.Rune:
+        lookAroundKind = reLookbehind
+      of '!'.Rune:
+        lookAroundKind = reNotLookbehind
+      else:
+        prettyCheck(
+          false,
+          "Invalid lookabehind, expected `<=` or `<!` symbol")
     else:
-      prettyCheck(
-        not sc.finished,
-        "Invalid lookahead. A character " &
-        "was expected, but found nothing (end of string)")
-      result = Node(kind: reLookahead, cp: sc.next())
+      doAssert false
+    doAssert sc.peek in ['='.Rune, '!'.Rune]
+    discard sc.next
     prettyCheck(
-      sc.peek == ")".toRune,
-      "Invalid lookahead, expected closing symbol")
-    discard sc.next()
+      sc.peek != ')'.Rune,
+      "Empty lookaround is not allowed")
+    result = Node(kind: lookAroundKind)
   else:
     prettyCheck(
       false,
@@ -700,10 +667,13 @@ func subParse(sc: Scanner[Rune]): Node =
   of "|".toRune:
     Node(kind: reOr, cp: r)
   of "*".toRune:
+    noRepeatCheck sc
     Node(kind: reZeroOrMore, cp: r)
   of "+".toRune:
+    noRepeatCheck sc
     Node(kind: reOneOrMore, cp: r)
   of "?".toRune:
+    noRepeatCheck sc
     Node(kind: reZeroOrOne, cp: r)
   of ")".toRune:
     Node(kind: reGroupEnd, cp: r)
@@ -770,13 +740,14 @@ func verbosity(
   else:
     discard
 
-func parse*(expression: string): seq[Node] =
+func parse*(expression: string): Exp =
   ## convert a ``string`` regex expression
   ## into a ``Node`` expression
-  result = newSeqOfCap[Node](expression.len)
+  result.s = newSeq[Node](expression.len)
+  result.s.setLen 0
   var vb = newSeq[bool]()
   let sc = expression.scan()
   for _ in sc:
     if sc.skipWhiteSpace(vb): continue
-    result.add(sc.subParse())
-    vb.verbosity(sc, result[^1])
+    result.s.add sc.subParse()
+    vb.verbosity(sc, result.s[^1])

@@ -1,11 +1,38 @@
 import std/unicode
 import std/sets
+from std/algorithm import sorted
 
 import pkg/unicodedb/properties
 
-import common
+import ./common
+
+# XXX split nfatype.nim and nodetype.nim
+#     once acyclic imports are supported
+# XXX refactor transitions, add tIdx: int16
+#     to Node, make TransitionsAll dense;
+#     remove z and store transition Nodes in
+#     the NFA; flatten TransitionsAll to seq[int16]
+#     + delimiter (-1'i16) or set first bit of
+#     every last tn idx
 
 type
+  # exptype.nim
+  RpnExp* = object
+    s*: seq[Node]
+
+  # nfatype.nim
+  Enfa* = object
+    s*: seq[Node]
+  TransitionsAll* = seq[seq[int16]]
+  ZclosureStates* = seq[seq[Node]]
+  Transitions* = object
+    allZ*: TransitionsAll
+    z*: ZclosureStates
+  Nfa* = object
+    s*: seq[Node]
+    t*: Transitions
+
+  # nodetype.nim
   Flag* = enum
     flagCaseInsensitive,  # i
     flagNotCaseInsensitive,  # -i
@@ -66,11 +93,13 @@ type
     reNotLookbehind,  # (?<!...)
     reSkip,  # dummy
     reEoe  # End of expression
+  NodeUid* = int16
   Node* = object
     kind*: NodeKind
     cp*: Rune
     next*: seq[int16]
     isGreedy*: bool
+    uid*: NodeUid
     # reGroupStart, reGroupEnd
     idx*: int16  # todo: rename?
     isCapturing*: bool
@@ -84,6 +113,13 @@ type
     shorthands*: seq[Node]
     # reUCC, reNotUCC
     cc*: UnicodeCategorySet
+    # reLookahead, reLookbehind,
+    # reNotLookahead, reNotLookbehind
+    subExp*: SubExp
+  SubExp* = object
+    nfa*: Nfa
+    rpn*: RpnExp
+    reverseCapts*: bool
 
 func toCharNode*(r: Rune): Node =
   ## return a ``Node`` that is meant to be matched
@@ -97,10 +133,10 @@ func initJoinerNode*(): Node =
   ## but they are never part of it
   Node(kind: reJoiner, cp: "~".toRune)
 
-func initEOENode*(): Node =
+func initEoeNode*(): Node =
   ## return the end-of-expression ``Node``.
   ## This is a dummy node that marks a match as successful
-  Node(kind: reEOE, cp: "#".toRune)
+  Node(kind: reEoe, cp: "#".toRune)
 
 template initSetNodeImpl(result: var Node, k: NodeKind) =
   ## base node
@@ -135,6 +171,19 @@ func initGroupStart*(
     flags: flags,
     isCapturing: isCapturing)
 
+func initSkipNode*(next: openArray[int16]): Node =
+  ## Return a dummy node that should be skipped
+  ## while traversing the NFA
+  result = Node(
+    kind: reSkip,
+    cp: "#".toRune)
+  when false:
+    # pending https://github.com/nim-lang/Nim/issues/15511#issuecomment-719952709
+    result.next.add next
+  else:
+    for ai in next:
+      result.next.add ai
+
 func isEmpty*(n: Node): bool =
   ## check if a set ``Node`` is empty
   assert n.kind in {reInSet, reNotSet}
@@ -165,6 +214,17 @@ const
     reLookahead,
     reLookbehind,
     reNotLookahead,
+    reNotLookbehind}
+  lookaroundKind* = {
+    reLookahead,
+    reLookbehind,
+    reNotLookahead,
+    reNotLookbehind}
+  lookaheadKind* = {
+    reLookahead,
+    reNotLookahead}
+  lookbehindKind* = {
+    reLookbehind,
     reNotLookbehind}
   shorthandKind* = {
     reWord,
@@ -211,12 +271,65 @@ const
   groupKind* = {
     reGroupStart,
     reGroupEnd}
-  matchTransitionKind* = {
-    reWhiteSpace,
-    reUCC,
-    reNotAlphaNum,
-    reNotDigit,
-    reNotWhiteSpace,
-    reNotUCC,
-    reInSet,
-    reNotSet}
+  groupStartKind* = {reGroupStart} + lookaroundKind
+
+func `$`*(n: Node): string =
+  ## return the string representation
+  ## of a `Node`. The string is always
+  ## equivalent to the original
+  ## expression but not necessarily equal
+  case n.kind
+  of reChar, reCharCi: $n.cp
+  of reJoiner: "~"
+  of reGroupStart: "("
+  of reGroupEnd: ")"
+  of reOr: "|"
+  of reZeroOrMore: "*" & (if n.isGreedy: "" else: "?")
+  of reOneOrMore: "+" & (if n.isGreedy: "" else: "?")
+  of reZeroOrOne: "?" & (if n.isGreedy: "" else: "?")
+  of reRepRange: "{" & $n.min & "," & $n.max & "}"
+  of reStartSym, reStartSymML: "^"
+  of reEndSym, reEndSymML: "$"
+  of reStart: r"\A"
+  of reEnd: r"\z"
+  of reWordBoundary, reWordBoundaryAscii: r"\b"
+  of reNotWordBoundary, reNotWordBoundaryAscii: r"\B"
+  of reWord, reWordAscii: r"\w"
+  of reDigit, reDigitAscii: r"\d"
+  of reWhiteSpace, reWhiteSpaceAscii: r"\s"
+  of reUCC: r"\pN"
+  of reNotAlphaNum, reNotAlphaNumAscii: r"\W"
+  of reNotDigit, reNotDigitAscii: r"\D"
+  of reNotWhiteSpace, reNotWhiteSpaceAscii: r"\S"
+  of reNotUCC: r"\PN"
+  of reAny, reAnyNl, reAnyAscii, reAnyNlAscii: "."
+  of reInSet, reNotSet:
+    var str = ""
+    str.add '['
+    if n.kind == reNotSet:
+      str.add '^'
+    var
+      cps = newSeq[Rune](n.cps.len)
+      i = 0
+    for cp in n.cps:
+      cps[i] = cp
+      inc i
+    for cp in cps.sorted(cmp):
+      str.add $cp
+    for sl in n.ranges:
+      str.add($sl.a & '-' & $sl.b)
+    for nn in n.shorthands:
+      str.add $nn
+    str.add ']'
+    str
+  of reLookahead: "(?=...)"
+  of reLookbehind: "(?<=...)"
+  of reNotLookahead: "(?!...)"
+  of reNotLookbehind: "(?<!...)"
+  of reSkip: r"{skip}"
+  of reEoe: r"{eoe}"
+
+func toString*(n: seq[Node]): string =
+  result = newStringOfCap(n.len)
+  for nn in n:
+    result.add $nn

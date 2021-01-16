@@ -44,32 +44,6 @@ proc raisesMsg(pattern: string): string =
   except RegexError:
     result = getCurrentExceptionMsg()
 
-proc toStrCaptures(m: RegexMatch, s: string): seq[seq[string]] =
-  result = newSeq[seq[string]](m.groupsCount)
-  var j = 0
-  for i in 0 ..< m.groupsCount:
-    result[i] = newSeq[string](m.group(i).len)
-    j = 0
-    for cbounds in m.group(i):
-      result[i][j] = s[cbounds]
-      inc j
-
-proc matchWithCapt(s: string, pattern: static Regex): seq[seq[string]] =
-  var m: RegexMatch
-  doAssert match(s, pattern, m)
-  result = m.toStrCaptures(s)
-
-proc findWithCapt(s: string, pattern: Regex): seq[seq[string]] =
-  var m: RegexMatch
-  doAssert find(s, pattern, m)
-  result = m.toStrCaptures(s)
-
-func findAllBounds(s: string, reg: Regex): seq[Slice[int]] =
-  result = map(
-    findAll(s, reg),
-    func (m: RegexMatch): Slice[int] =
-      m.boundaries)
-
 test "tfull_match":
   check "".isMatch(re"")
   check "a".isMatch(re"a")
