@@ -2,14 +2,16 @@ import std/unicode
 import std/sets
 
 import pkg/unicodedb/properties
-import pkg/unicodedb/types
-import pkg/unicodeplus
+import pkg/unicodedb/types as utypes
 
-import nodetype
-import common
+import ./types
+import ./common
 
-func isWord*(r: Rune): bool {.inline.} =
+func isWord(r: Rune): bool {.inline.} =
   utmWord in unicodeTypes(r)
+
+func isDecimal(r: Rune): bool {.inline.} =
+  utmDecimal in unicodeTypes(r)
 
 func isWordAscii(r: Rune): bool {.inline.} =
   ## return ``true`` if the given
@@ -37,7 +39,7 @@ func isWordBoundaryAscii(r: Rune, nxt: Rune): bool {.inline.} =
   ## is a boundary. Match ascii only
   isWordBoundaryImpl(r, nxt, isWordAscii)
 
-func match*(n: Node, r: Rune, nxt: Rune): bool =
+func match*(n: Node, r: Rune, nxt: Rune): bool {.inline.} =
   ## match for ``Node`` of assertion kind.
   ## Return whether the node matches
   ## the current characters or not
@@ -60,19 +62,11 @@ func match*(n: Node, r: Rune, nxt: Rune): bool =
     isWordBoundaryAscii(r, nxt)
   of reNotWordBoundaryAscii:
     not isWordBoundaryAscii(r, nxt)
-  of reLookahead:
-    n.cp == nxt
-  of reNotLookahead:
-    n.cp != nxt
-  of reLookbehind:
-    n.cp == r
-  of reNotLookbehind:
-    n.cp != r
   else:
     assert false
     false
 
-func contains(sr: seq[Slice[Rune]], r: Rune): bool =
+func contains(sr: seq[Slice[Rune]], r: Rune): bool {.inline.} =
   result = false
   for sl in sr:
     result = r in sl
@@ -105,20 +99,23 @@ func isAnyAscii(r: Rune): bool {.inline.} =
   (r.int <= int8.high and
    r != lineBreakRune)
 
+# todo: can not use unicodeplus due to
+# https://github.com/nim-lang/Nim/issues/7059
 func swapCase*(r: Rune): Rune =
   result = r.toLower()
   if result != r:
     return
   result = r.toUpper()
 
-func match*(n: Node, r: Rune): bool =
+func match*(n: Node, r: Rune): bool {.inline.} =
   ## match for ``Node`` of matchable kind.
   ## Return whether the node matches
   ## the current character or not
-  assert r != invalidRune
+  if r.int < 0:
+    return n.kind == reEOE
   case n.kind
   of reEOE:
-    false
+    r == invalidRune
   of reWord:
     r.isWord()
   of reNotAlphaNum:

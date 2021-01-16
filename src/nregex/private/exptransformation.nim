@@ -3,9 +3,10 @@ import std/sets
 import std/tables
 import std/algorithm
 
-import nodetype
-import common
-import scanner
+import ./exptype
+import ./types
+import ./common
+import ./scanner
 
 # todo: can not use unicodeplus due to
 # https://github.com/nim-lang/Nim/issues/7059
@@ -23,17 +24,19 @@ func check(cond: bool, msg: string) =
   if not cond:
     raise newException(RegexError, msg)
 
-func greediness(expression: seq[Node]): seq[Node] =
+func greediness(exp: Exp): Exp =
   ## apply greediness to an expression
-  result = newSeqOfCap[Node](expression.len)
-  var sc = expression.scan()
+  result.s = newSeq[Node](exp.s.len)
+  result.s.setLen 0
+  var sc = exp.s.scan()
   for n in sc.mitems():
-    if (n.kind in repetitionKind or
-        n.kind == reZeroOrOne) and
-        sc.peek.kind == reZeroOrOne:
+    if n.kind in repetitionKind or
+        n.kind == reZeroOrOne:
       n.isGreedy = true
-      discard sc.next
-    result.add(n)
+      if sc.peek.kind == reZeroOrOne:
+        n.isGreedy = false
+        discard sc.next
+    result.s.add n
 
 type
   GroupsCapture* = object
@@ -41,18 +44,18 @@ type
     names*: OrderedTable[string, int16]
 
 func fillGroups(
-  exp: seq[Node],
+  exp: Exp,
   groups: var GroupsCapture
-): seq[Node] =
+): Exp =
   ## populate group indices, names and capturing mark
   result = exp
   groups.names = initOrderedTable[string, int16](2)
   groups.count = 0'i16
   var gs = newSeq[int]()
-  for i, n in result.mpairs:
+  for i, n in mpairs result.s:
     case n.kind
-    of reGroupStart:
-      gs.add(i)
+    of groupStartKind:
+      gs.add i
       if n.isCapturing:
         n.idx = groups.count
         inc groups.count
@@ -65,8 +68,8 @@ func fillGroups(
         "Invalid capturing group. " &
         "Found too many closing symbols")
       let start = gs.pop()
-      n.isCapturing = result[start].isCapturing
-      n.idx = result[start].idx
+      n.isCapturing = result.s[start].isCapturing
+      n.idx = result.s[start].idx
     else:
       discard
     check(
@@ -161,7 +164,7 @@ func applyFlag(n: var Node, f: Flag) =
     # todo: apply recursevely to
     #       shorthands of reInSet/reNotSet (i.e: [:ascii:])
     if n.kind in {reInSet, reNotSet}:
-      var cps = initHashSet[Rune]()
+      var cps = initHashSet[Rune](2)
       cps.incl(n.cps)
       for cp in cps:
         let cpsc = cp.swapCase()
@@ -182,7 +185,7 @@ func applyFlag(n: var Node, f: Flag) =
       for nn in n.shorthands.mitems:
         nn.kind = nn.kind.toAsciiKind()
   else:
-    assert f in {
+    doAssert f in {
       flagNotAnyMatchNewLine,
       flagNotMultiLine,
       flagNotCaseInsensitive,
@@ -191,28 +194,29 @@ func applyFlag(n: var Node, f: Flag) =
       flagVerbose,
       flagNotVerbose}
 
-func applyFlags(expression: seq[Node]): seq[Node] =
+func applyFlags(exp: Exp): Exp =
   ## apply flags to each group
-  result = newSeqOfCap[Node](expression.len)
+  result.s = newSeq[Node](exp.s.len)
+  result.s.setLen 0
   var flags = newSeq[seq[Flag]]()
-  var sc = expression.scan()
+  var sc = exp.s.scan()
   for n in sc.mitems():
     # (?flags)
     # Orphan flags are added to current group
     case n.kind
-    of reGroupStart:
+    of groupStartKind:
       if n.flags.len == 0:
-        flags.add(@[])
-        result.add(n)
+        flags.add @[]
+        result.s.add n
         continue
       if sc.peek.kind == reGroupEnd:  # (?flags)
         discard sc.next()
         if flags.len > 0:
-          flags[flags.len - 1].add(n.flags)
+          flags[flags.len - 1].add n.flags
         else:
-          flags.add(n.flags)
+          flags.add n.flags
         continue  # skip (
-      flags.add(n.flags)
+      flags.add n.flags
     of reGroupEnd:
       discard flags.pop()
     else:
@@ -220,12 +224,12 @@ func applyFlags(expression: seq[Node]): seq[Node] =
       for f in Flag.low .. Flag.high:
         if ff[f]:
           applyFlag(n, f)
-    result.add(n)
+    result.s.add n
 
 func expandOneRepRange(subExpr: seq[Node], n: Node): seq[Node] =
   ## expand a repetition-range expression
   ## into the equivalent repeated expression
-  assert n.kind == reRepRange
+  doAssert n.kind == reRepRange
   if n.max == -1:  # a{n,} -> aaa*
     result = newSeqOfCap[Node](subExpr.len * (n.min + 1) + 1)
     for _ in 0 ..< n.min:
@@ -239,7 +243,7 @@ func expandOneRepRange(subExpr: seq[Node], n: Node): seq[Node] =
     for _ in 0 ..< n.max - 1:
       result.add(subExpr)
   else:  # a{n,m} -> aaa?a?
-    assert n.min < n.max
+    doAssert n.min < n.max
     result = newSeqOfCap[Node](subExpr.len * n.max + n.max - n.min)
     for _ in 0 ..< n.min:
       result.add(subExpr)
@@ -254,24 +258,25 @@ func expandOneRepRange(subExpr: seq[Node], n: Node): seq[Node] =
       cp: "?".toRune,
       isGreedy: n.isGreedy))
 
-func expandRepRange(expression: seq[Node]): seq[Node] =
+func expandRepRange(exp: Exp): Exp =
   ## expand every repetition range
-  result = newSeqOfCap[Node](expression.len)
+  result.s = newSeq[Node](exp.s.len)
+  result.s.setLen 0
   var i: int
   var gi: int
-  for n in expression:
+  for n in exp.s:
     if n.kind != reRepRange:
-      result.add(n)
+      result.s.add n
       continue
     check(
-      result.len > 0,
+      result.s.len > 0,
       "Invalid repeition range, " &
       "nothing to repeat")
-    case result[^1].kind
+    case result.s[^1].kind
     of reGroupEnd:
       i = 0
       gi = 0
-      for ne in result.reversed:
+      for ne in result.s.reversed:
         inc i
         if ne.kind == reGroupEnd:
           inc gi
@@ -281,32 +286,45 @@ func expandRepRange(expression: seq[Node]): seq[Node] =
           break
         doAssert gi >= 0
       doAssert gi == 0
-      assert result[result.len-i].kind == reGroupStart
-      result.add(result[result.len-i .. result.len-1].expandOneRepRange(n))
+      assert result.s[result.s.len-i].kind == reGroupStart
+      result.s.add result.s[result.s.len-i .. result.s.len-1].expandOneRepRange(n)
     of matchableKind:
-      result.add(result[result.len-1 .. result.len-1].expandOneRepRange(n))
+      result.s.add result.s[result.s.len-1 .. result.s.len-1].expandOneRepRange(n)
     else:
-      raise newException(RegexError, (
-        "Invalid repetition range, either " &
-        "char, shorthand (i.e: \\w), group, or set " &
-        "expected before repetition range"))
+      check(
+        false, 
+        ("Invalid repetition range, either " &
+         "char, shorthand (i.e: \\w), group, or set " &
+         "expected before repetition range"))
 
-func joinAtoms(expression: seq[Node]): seq[Node] =
+func populateUid(exp: Exp): Exp =
+  check(
+    exp.s.high < NodeUid.high,
+    ("The expression is too long, " &
+     "limit is ~$#") %% $NodeUid.high)
+  result = exp
+  var uid = 1.NodeUid
+  for n in mitems result.s:
+    n.uid = uid
+    inc uid
+
+func joinAtoms(exp: Exp): AtomsExp =
   ## Put a ``~`` joiner between atoms. An atom is
   ## a piece of expression that would loose
   ## meaning when breaking it up (i.e.: ``a~(b|c)*~d``)
-  result = newSeqOfCap[Node](expression.len * 2)
+  result.s = newSeq[Node](exp.s.len * 2)
+  result.s.setLen 0
   var atomsCount = 0
-  for n in expression:
+  for n in exp.s:
     case n.kind
-    of matchableKind, assertionKind:
+    of matchableKind, assertionKind - lookaroundKind:
       inc atomsCount
       if atomsCount > 1:
         atomsCount = 1
-        result.add(initJoinerNode())
-    of reGroupStart:
+        result.s.add initJoinerNode()
+    of groupStartKind:
       if atomsCount > 0:
-        result.add(initJoinerNode())
+        result.s.add initJoinerNode()
       atomsCount = 0
     of reOr:
       atomsCount = 0
@@ -317,8 +335,8 @@ func joinAtoms(expression: seq[Node]): seq[Node] =
         reRepRange:
       inc atomsCount
     else:
-      assert false
-    result.add(n)
+      doAssert false
+    result.s.add n
 
 type
   Associativity = enum
@@ -346,7 +364,7 @@ func opsPA(nk: NodeKind): OpsPA =
   of reOr:
     result = (3, asyLeft)
   else:
-    assert false
+    doAssert false
 
 func hasPrecedence(a: NodeKind, b: NodeKind): bool =
   ## Check ``b`` has precedence over ``a``.
@@ -363,22 +381,22 @@ func hasPrecedence(a: NodeKind, b: NodeKind): bool =
       opsPA(b).precedence < opsPA(a).precedence)
 
 func popGreaterThan(ops: var seq[Node], op: Node): seq[Node] =
-  assert op.kind in opKind
+  doAssert op.kind in opKind
   result = newSeqOfCap[Node](ops.len)
   while (ops.len > 0 and
       ops[ops.len - 1].kind in opKind and
       ops[ops.len - 1].kind.hasPrecedence(op.kind)):
-    result.add(ops.pop())
+    result.add ops.pop()
 
 func popUntilGroupStart(ops: var seq[Node]): seq[Node] =
   result = newSeqOfCap[Node](ops.len)
   while true:
     let op = ops.pop()
-    result.add(op)
+    result.add op
     if op.kind == reGroupStart:
       break
 
-func rpn(expression: seq[Node]): seq[Node] =
+func rpn(exp: AtomsExp): RpnExp =
   ## An adaptation of the Shunting-yard algorithm
   ## for producing `Reverse Polish Notation` out of
   ## an expression specified in infix notation.
@@ -387,34 +405,85 @@ func rpn(expression: seq[Node]): seq[Node] =
   ## the parsing of the regular expression into an NFA.
   ## Suffix notation removes nesting and so it can
   ## be parsed in a linear way instead of recursively
-  result = newSeqOfCap[Node](expression.len)
+  result.s = newSeq[Node](exp.s.len)
+  result.s.setLen 0
   var ops = newSeq[Node]()
-  for n in expression:
+  for n in exp.s:
     case n.kind
     of matchableKind, assertionKind:
-      result.add(n)
+      result.s.add n
     of reGroupStart:
-      ops.add(n)
+      ops.add n
     of reGroupEnd:
-      result.add(ops.popUntilGroupStart())
-      result.add(n)
+      result.s.add ops.popUntilGroupStart()
+      result.s.add n
     of opKind:
-      result.add(ops.popGreaterThan(n))
-      ops.add(n)
+      result.s.add ops.popGreaterThan(n)
+      ops.add n
     else:
-      assert false
+      doAssert false
   # reverse ops
   for i in 1 .. ops.len:
-    result.add(ops[ops.len - i])
+    result.s.add ops[ops.len-i]
 
-func transformExp*(
-  exp: seq[Node],
+func subExps(exp: AtomsExp, parentKind = reLookahead): AtomsExp =
+  ## Collect and convert lookaround sub-expressions to RPN
+  template n: untyped = result.s[^1]
+  result.s = newSeq[Node](exp.s.len)
+  result.s.setLen 0
+  var i = 0
+  var parens = newSeq[bool]()
+  while i < exp.s.len:
+    if exp.s[i].kind in lookaroundKind:
+      result.s.add exp.s[i]
+      inc i
+      parens.setLen 0
+      let i0 = i
+      while i < exp.s.len:
+        case exp.s[i].kind
+        of groupStartKind:
+          parens.add true
+        of reGroupEnd:
+          if parens.len > 0:
+            discard parens.pop()
+          else:
+            break
+        else:
+          discard
+        inc i
+      doAssert exp.s[i].kind == reGroupEnd
+      let atoms = AtomsExp(s: exp.s[i0 .. i-1])
+      n.subExp.rpn = atoms
+        .subExps(parentKind = n.kind)
+        .rpn
+      # Store whether the capts must be reversed
+      if parentKind in lookaheadKind:
+        n.subExp.reverseCapts = n.kind in lookbehindKind
+      else:
+        doAssert parentKind in lookbehindKind
+        n.subExp.reverseCapts = n.kind in lookaheadKind
+      inc i
+    else:
+      result.s.add exp.s[i]
+      inc i
+
+func toAtoms*(
+  exp: Exp,
   groups: var GroupsCapture
-): seq[Node] {.inline.} =
+): AtomsExp {.inline.} =
   result = exp
     .fillGroups(groups)
     .greediness
     .applyFlags
     .expandRepRange
+    .populateUid
     .joinAtoms
+
+func transformExp*(
+  exp: Exp,
+  groups: var GroupsCapture
+): RpnExp {.inline.} =
+  result = exp
+    .toAtoms(groups)
+    .subExps
     .rpn
