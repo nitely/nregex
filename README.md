@@ -4,6 +4,9 @@
 
 This is currently a PoC for a DFA that supports submatches extraction. The match time complexity is linear in length of the text to match. [Read the article](https://nitely.github.io/2020/01/19/a-dfa-for-submatches-extraction.html) if you are interested in the implementation.
 
+> [!WARNING]
+> Pls use [nim-regex](https://github.com/nitely/nim-regex) for anything serious, instead of this package.
+
 ## Install
 
 ```
