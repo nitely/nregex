@@ -44,22 +44,17 @@ proc raisesMsg(pattern: string): string =
   except RegexError:
     result = getCurrentExceptionMsg()
 
-proc toStrCaptures(m: RegexMatch, s: string): seq[seq[string]] =
-  result = newSeq[seq[string]](m.groupsCount)
-  var j = 0
+proc toStrCaptures(m: RegexMatch, s: string): seq[string] =
+  result = newSeq[string](m.groupsCount)
   for i in 0 ..< m.groupsCount:
-    result[i] = newSeq[string](m.group(i).len)
-    j = 0
-    for cbounds in m.group(i):
-      result[i][j] = s[cbounds]
-      inc j
+    result[i] = m.group(i, s)
 
-proc matchWithCapt(s: string, pattern: static Regex): seq[seq[string]] =
+proc matchWithCapt(s: string, pattern: static Regex): seq[string] =
   var m: RegexMatch
   doAssert match(s, pattern, m)
   result = m.toStrCaptures(s)
 
-proc findWithCapt(s: string, pattern: Regex): seq[seq[string]] =
+proc findWithCapt(s: string, pattern: Regex): seq[string] =
   var m: RegexMatch
   doAssert find(s, pattern, m)
   result = m.toStrCaptures(s)
@@ -98,33 +93,33 @@ test "trepetition_cycle":
   check "aaaa".isMatch(re"((a)*(a)*)*")
 
 test "tcaptures":
-  check "ab".matchWithCapt(re"(a)b") == @[@["a"]]
-  check "aa".matchWithCapt(re"(a)*") == @[@["a", "a"]]
+  check "ab".matchWithCapt(re"(a)b") == @["a"]
+  check "aa".matchWithCapt(re"(a)*") == @["a"]
   check "aab".matchWithCapt(re"((a)*b)") ==
-    @[@["aab"], @["a", "a"]]
+    @["aab", "a"]
   check "abbbbccccd".matchWithCapt(re"a(b|c)*d") ==
-    @[@["b", "b", "b", "b", "c", "c", "c", "c"]]
+    @["c"]
   check "abbb".matchWithCapt(re"((a)*(b)*)") ==
-    @[@["abbb"], @["a"], @["b", "b", "b"]]
+    @["abbb", "a", "b"]
   check "abbb".matchWithCapt(re"((a(b)*)*(b)*)") ==
-    @[@["abbb"], @["abbb"], @["b", "b", "b"], @[]]
-  check "aa".matchWithCapt(re"(a)+") == @[@["a", "a"]]
-  check "abab".matchWithCapt(re"(ab)+") == @[@["ab", "ab"]]
-  check "a".matchWithCapt(re"(a)?") == @[@["a"]]
-  check "ab".matchWithCapt(re"(ab)?") == @[@["ab"]]
+    @["abbb", "abbb", "b", ""]
+  check "aa".matchWithCapt(re"(a)+") == @["a"]
+  check "abab".matchWithCapt(re"(ab)+") == @["ab"]
+  check "a".matchWithCapt(re"(a)?") == @["a"]
+  check "ab".matchWithCapt(re"(ab)?") == @["ab"]
   check "aaabbbaaa".matchWithCapt(re"(a*|b*)*") ==
-    @[@["aaa", "bbb", "aaa"]]
+    @[""]
   check "abab".matchWithCapt(re"(a(b))*") ==
-    @[@["ab", "ab"], @["b", "b"]]
+    @["ab", "b"]
   # Following two should match the same
   check "aaanasdnasd".matchWithCapt(re"((a)*n?(asd)*)*") ==
-    @[@["aaanasd", "nasd"], @["a", "a", "a"], @["asd", "asd"]]
+    @["", "a", "asd"]
   check "aaanasdnasd".matchWithCapt(re"((a)*n?(asd))*") ==
-    @[@["aaanasd", "nasd"], @["a", "a", "a"], @["asd", "asd"]]
+    @["nasd", "a", "asd"]
   check "b".matchWithCapt(re"(a)?b") ==
-    @[newSeq[string]()]
+    @[""]
   check "ฅa".matchWithCapt(re"(\w)(a)") ==
-    @[@["ฅ"], @["a"]]
+    @["ฅ", "a"]
 
 test "tzero_or_more_op":
   check raisesMsg(r"*") ==
@@ -171,7 +166,7 @@ test "tescape":
 test "talphanum_shorthand":
   check "a".isMatch(re"\w")
   check "abc123".isMatch(re"\w*")
-  check "a".matchWithCapt(re"(\w)") == @[@["a"]]
+  check "a".matchWithCapt(re"(\w)") == @["a"]
 
 test "tdigit":
   check "1".isMatch(re"\d")
@@ -347,15 +342,15 @@ test "tset":
   check "a".isMatch(re"[\141]")
 
 test "tnot_set":
-  check "a".matchWithCapt(re"([^b])") == @[@["a"]]
-  check "asd".matchWithCapt(re"([^b]*)") == @[@["asd"]]
-  check "ab".matchWithCapt(re"([^b]*b)") == @[@["ab"]]
+  check "a".matchWithCapt(re"([^b])") == @["a"]
+  check "asd".matchWithCapt(re"([^b]*)") == @["asd"]
+  check "ab".matchWithCapt(re"([^b]*b)") == @["ab"]
   check "asd123".matchWithCapt(re"([^\d]*)(\d*)") ==
-    @[@["asd"], @["123"]]
+    @["asd", "123"]
   check "asd123".matchWithCapt(re"([asd]*)([^asd]*)") ==
-    @[@["asd"], @["123"]]
+    @["asd", "123"]
   check "<asd123!@#>".matchWithCapt(re"(<[^>]*>)") ==
-    @[@["<asd123!@#>"]]
+    @["<asd123!@#>"]
   check not "a".isMatch(re"[^a]")
   check raisesMsg(r"[^]") ==
     "Invalid set. Missing `]`\n" &
@@ -402,33 +397,33 @@ test "trepetition_range":
   check raises(r"a*{0}")
   check raises(r"a*{1}")
   check "aaa".matchWithCapt(re"(a){,}") ==
-    @[@["a", "a", "a"]]
-  check "aaa".matchWithCapt(re"(a{,}){,}") == @[@["aaa"]]
+    @["a"]
+  check "aaa".matchWithCapt(re"(a{,}){,}") == @[""]
   check "aaaaa".matchWithCapt(re"(a){5}") ==
-    @[@["a", "a", "a", "a", "a"]]
-  check "a".matchWithCapt(re"(a){1,5}") == @[@["a"]]
+    @["a"]
+  check "a".matchWithCapt(re"(a){1,5}") == @["a"]
   check "aaa".matchWithCapt(re"(a){1,5}") ==
-    @[@["a", "a", "a"]]
+    @["a"]
   check "".matchWithCapt(re"(a){,}") ==
-    @[newSeq[string]()]
-  check "aaa".matchWithCapt(re"(a{,}){,}") == @[@["aaa"]]
+    @[""]
+  check "aaa".matchWithCapt(re"(a{,}){,}") == @[""]
   check "aaa".matchWithCapt(re"(a{1}){,}") ==
-    @[@["a", "a", "a"]]
+    @["a"]
   check "aaaa".matchWithCapt(re"(a{2}){,}") ==
-    @[@["aa", "aa"]]
+    @["aa"]
   check "aaaa".matchWithCapt(re"(a{,3}){,}") ==
-    @[@["aaa", "a"]]
+    @[""]
   check "".matchWithCapt(re"(a{,3}){,}") ==
-    @[newSeq[string]()]
+    @[""]
   check "aaa".matchWithCapt(re"(a{1,}){,}") ==
-    @[@["aaa"]]
+    @["aaa"]
   check "".matchWithCapt(re"(a{1,}){,}") ==
-    @[newSeq[string]()]
+    @[""]
   check not "".isMatch(re"(a{1,})")
-  check "a".matchWithCapt(re"(a{1,})") == @[@["a"]]
-  check "aaa".matchWithCapt(re"(a{1,})") == @[@["aaa"]]
+  check "a".matchWithCapt(re"(a{1,})") == @["a"]
+  check "aaa".matchWithCapt(re"(a{1,})") == @["aaa"]
   check "abab".matchWithCapt(re"(a(b)){2}") ==
-    @[@["ab", "ab"], @["b", "b"]]
+    @["ab", "b"]
   check raisesMsg(r"a{bad}") ==
     "Invalid repetition range. Range can only contain digits\n" &
     "a{bad}\n" &
@@ -456,76 +451,76 @@ test "trepetition_range":
 
 test "tnon_capturing_groups":
   check "abab".matchWithCapt(re"(a(b))*") ==
-    @[@["ab", "ab"], @["b", "b"]]
+    @["ab", "b"]
   check "abab".matchWithCapt(re"(?:a(b))*") ==
-    @[@["b", "b"]]
+    @["b"]
   check "abab".matchWithCapt(re"(a(?:b))*") ==
-    @[@["ab", "ab"]]
-  check ")".matchWithCapt(re"(\))") == @[@[")"]]
+    @["ab"]
+  check ")".matchWithCapt(re"(\))") == @[")"]
 
 test "tgreediness":
   check "a".matchWithCapt(re"(a)??") ==
-    @[@["a"]]
+    @["a"]
   check "aaa".matchWithCapt(re"(a)*(a)*(a)*") ==
-    @[@["a", "a", "a"], @[], @[]]
+    @["a", "", ""]
   check "aaa".matchWithCapt(re"(a)*?(a)*(a)*?") ==
-    @[@[], @["a", "a", "a"], @[]]
+    @["", "a", ""]
   check "aaa".matchWithCapt(re"(a)*?(a)*?(a)*") ==
-    @[@[], @[], @["a", "a", "a"]]
+    @["", "", "a"]
   check "aaa".matchWithCapt(re"(a)*?(a)*?(a)*?") ==
-    @[@[], @[], @["a", "a", "a"]]
+    @["", "", "a"]
   check "aaaa".matchWithCapt(re"(a)*?(a)*?(a)*?") ==
-    @[@[], @[], @["a", "a", "a", "a"]]
+    @["", "", "a"]
   check "aa".matchWithCapt(re"(a)?(aa?)") ==
-    @[@["a"], @["a"]]
+    @["a", "a"]
   check "aa".matchWithCapt(re"(a)??(a)") ==
-    @[@["a"], @["a"]]
+    @["a", "a"]
   check "aa".matchWithCapt(re"(a)??(aa?)") ==
-    @[@[], @["aa"]]
+    @["", "aa"]
   check "aaa".matchWithCapt(re"(a)+(a)+(a)?") ==
-    @[@["a", "a"], @["a"], @[]]
+    @["a", "a", ""]
   check "aaa".matchWithCapt(re"(a)+?(a)+(a)?") ==
-    @[@["a"], @["a", "a"], @[]]
+    @["a", "a", ""]
   check "aaa".matchWithCapt(re"(a)+?(a)+?(a)?") ==
-    @[@["a"], @["a"], @["a"]]
+    @["a", "a", "a"]
   check "aaa".matchWithCapt(re"(a){,}(a){,}(a){,}") ==
-    @[@["a", "a", "a"], @[], @[]]
+    @["a", "", ""]
   check "aaa".matchWithCapt(re"(a){,}?(a){,}(a){,}?") ==
-    @[@[], @["a", "a", "a"], @[]]
+    @["", "a", ""]
   check "aaa".matchWithCapt(re"(a){,}?(a){,}?(a){,}") ==
-    @[@[], @[], @["a", "a", "a"]]
+    @["", "", "a"]
   check "aaa".matchWithCapt(re"(a){,}?(a){,}?(a){,}?") ==
-    @[@[], @[], @["a", "a", "a"]]
+    @["", "", "a"]
   check "aaa".matchWithCapt(re"(a){1,}(a){1,}(a)?") ==
-    @[@["a", "a"], @["a"], @[]]
+    @["a", "a", ""]
   check "aaa".matchWithCapt(re"(a){1,}?(a){1,}(a)?") ==
-    @[@["a"], @["a", "a"], @[]]
+    @["a", "a", ""]
   check "aaa".matchWithCapt(re"(a){1,}?(a){1,}?(a)?") ==
-    @[@["a"], @["a"], @["a"]]
+    @["a", "a", "a"]
   block:
     var m: RegexMatch
     check match("aaaa", re"(a*?)(a*?)(a*)", m)
     check m.toStrCaptures("aaaa") ==
-      @[@[""], @[""], @["aaaa"]]
+      @["", "", "aaaa"]
   block:
     var m: RegexMatch
     check match("aaaa", re"(a*)(a*?)(a*?)", m)
     check m.toStrCaptures("aaaa") ==
-       @[@["aaaa"], @[""], @[""]]
+       @["aaaa", "", ""]
 
 test "tassertions":
   check "bbaa aa".matchWithCapt(re"([\w ]*?)(\baa\b)") ==
-    @[@["bbaa "], @["aa"]]
+    @["bbaa ", "aa"]
   check "aa bbaa".matchWithCapt(re"(\baa\b)([\w ]*)") ==
-    @[@["aa"], @[" bbaa"]]
+    @["aa", " bbaa"]
   check "This island is great".matchWithCapt(
       re"([\w ]*?)(\bis\b)([\w ]*?)") ==
-    @[@["This island "], @["is"], @[" great"]]
+    @["This island ", "is", " great"]
   check "bbaabb".matchWithCapt(re"([\w ]*?)(\Baa\B)([\w ]*?)") ==
-    @[@["bb"], @["aa"], @["bb"]]
+    @["bb", "aa", "bb"]
   check "This is my sister".matchWithCapt(
       re"([\w ]*?)(\Bis\B)([\w ]*?)") ==
-    @[@["This is my s"], @["is"], @["ter"]]
+    @["This is my s", "is", "ter"]
   check "aa".isMatch(re"\b\b\baa\b\b\b")
   check "bb".isMatch(re"^^^^bb$$$$")
   check "bb".isMatch(re"\A\A\A\Abb\z\z\z\z")
@@ -535,7 +530,7 @@ test "tdot_any_matcher":
   check "asd123!@#".isMatch(re".*")
   check "| (•□•) | (❍ᴥ❍ʋ)".isMatch(re".*")
   check "ฅ^•ﻌ•^ฅ".matchWithCapt(re"(.*)") ==
-    @[@["ฅ^•ﻌ•^ฅ"]]
+    @["ฅ^•ﻌ•^ฅ"]
   check "\t".isMatch(re".")
   check not "\L".isMatch(re".*")
 
@@ -543,61 +538,58 @@ test "tgroup":
   block:
     var m: RegexMatch
     check "foobar".match(re"(\w*)", m)
-    check m.group(0) == @[0..5]
+    check m.group(0) == 0..5
   block:
     var m: RegexMatch
     check "foobar".match(re"(?P<foo>\w*)", m)
-    check m.group(0) == @[0..5]
+    check m.group(0) == 0..5
   block:
     var m: RegexMatch
     check "ab".match(re"(a)(b)", m)
-    check m.group(0) == @[0..0]
-    check m.group(1) == @[1..1]
+    check m.group(0) == 0..0
+    check m.group(1) == 1..1
   block:
     var m: RegexMatch
     check match("ab", re"(a)(b)", m)
     check m.toStrCaptures("ab") ==
-      @[@["a"], @["b"]]
+      @["a", "b"]
   block:
-    let
-      expected = ["a", "b", "c"]
-      text = "abc"
+    let text = "abc"
     var m: RegexMatch
     check text.match(re"(?P<foo>\w)+", m)
-    var i = 0
-    for bounds in m.group("foo"):
-      check expected[i] == text[bounds]
-      inc i
+    check text[m.group("foo")] == "c"
+    check m.group("foo", text) == "c"
   block:
-    let
-      expected = ["a", "b", "c"]
-      text = "abc"
+    let text = "abc"
     var m: RegexMatch
     check text.match(re"(\w)+", m)
-    var i = 0
-    for bounds in m.group(0):
-      check expected[i] == text[bounds]
-      inc i
+    check text[m.group(0)] == "c"
+    check m.group(0, text) == "c"
+  block:
+    var m: RegexMatch
+    check "abc".match(re"(\w)+|(d)", m)
+    check m.group(1) == reNonCapture
+    check m.group(1, "abc") == ""
 
 test "tnamed_groups":
   block:
     var m: RegexMatch
     check "foobar".match(re"(?P<foo>\w*)", m)
-    check m.group("foo") == @[0..5]
+    check m.group("foo") == 0..5
   block:
     var m: RegexMatch
     check "foobar".match(re"(?P<foo>(?P<bar>\w*))", m)
-    check m.group("foo") == @[0..5]
-    check m.group("bar") == @[0..5]
+    check m.group("foo") == 0..5
+    check m.group("bar") == 0..5
   block:
     var m: RegexMatch
     check "aab".match(re"(?P<foo>(?P<bar>a)*b)", m)
-    check m.group("foo") == @[0..2]
-    check m.group("bar") == @[0..0, 1..1]
+    check m.group("foo") == 0..2
+    check m.group("bar") == 1..1
   block:
     var m: RegexMatch
     check "aab".match(re"((?P<bar>a)*b)", m)
-    check m.group("bar") == @[0..0, 1..1]
+    check m.group("bar") == 1..1
 
   check raisesMsg(r"abc(?Pabc)") ==
     "Invalid group name. Missing `<`\n" &
@@ -653,17 +645,17 @@ test "tflags":
   check not "foo\Lbar".isMatch(re"(?s-s:.*)")
   check not "foo\Lbar".isMatch(re"(?------s----s:.*)")
   check "foo\Lbar".matchWithCapt(re"((?s:.*))") ==
-    @[@["foo\Lbar"]]
-  check "a".matchWithCapt(re"((?i:a))") == @[@["a"]]
-  check "A".matchWithCapt(re"((?i:a))") == @[@["A"]]
+    @["foo\Lbar"]
+  check "a".matchWithCapt(re"((?i:a))") == @["a"]
+  check "A".matchWithCapt(re"((?i:a))") == @["A"]
   check "ABC".matchWithCapt(re"((?i:aBc))") ==
-    @[@["ABC"]]
-  check "a".matchWithCapt(re"((?-i:a))") == @[@["a"]]
+    @["ABC"]
+  check "a".matchWithCapt(re"((?-i:a))") == @["a"]
   check not "A".isMatch(re"((?-i:a))")
   check not "A".isMatch(re"((?-ii-i:a))")
-  check "a".matchWithCapt(re"((?i)a)") == @[@["a"]]
-  check "A".matchWithCapt(re"((?i)a)") == @[@["A"]]
-  check "a".matchWithCapt(re"((?-i)a)") == @[@["a"]]
+  check "a".matchWithCapt(re"((?i)a)") == @["a"]
+  check "A".matchWithCapt(re"((?i)a)") == @["A"]
+  check "a".matchWithCapt(re"((?-i)a)") == @["a"]
   check not "A".isMatch(re"((?-i)a)")
   check "AaA".isMatch(re"(?i)a+")
   check "AaA".isMatch(re"(?i)A+")
@@ -671,7 +663,7 @@ test "tflags":
   check not "b".isMatch(re"(?i)a")
   check "A".isMatch(re"(?-i)(?i)a")
   check not "A".isMatch(re"(?i)(?-i)a")
-  check "AaA".matchWithCapt(re"((?i)a+)") == @[@["AaA"]]
+  check "AaA".matchWithCapt(re"((?i)a+)") == @["AaA"]
   check "A".isMatch(re"(?i)[a]")
   check "a".isMatch(re"(?i)[a]")
   check not "@".isMatch(re"(?i)[a]")
@@ -684,20 +676,20 @@ test "tflags":
   check "C".isMatch(re"(?i)[A-Z]")
 
   check "aa".matchWithCapt(re"((?U)a*)(a*)") ==
-    @[@[""], @["aa"]]
+    @["", "aa"]
   check "aa".matchWithCapt(re"((?U)a*?)(a*)") ==
-    @[@["aa"], @[""]]
+    @["aa", ""]
   check "aa".matchWithCapt(re"((?U-U)a*)(a*)") ==
-    @[@["aa"], @[""]]
+    @["aa", ""]
   # no empty matches
   check "aa".matchWithCapt(re"(?U:(a)*)(a)*") ==
-    @[@[], @["a", "a"]]
+    @["", "a"]
   check "aa".matchWithCapt(re"((?U:a*))(a*)") ==
-    @[@[""], @["aa"]]
+    @["", "aa"]
   check "aa".matchWithCapt(re"((?U:a*?))(a*)") ==
-    @[@["aa"], @[""]]
+    @["aa", ""]
   check "aa".matchWithCapt(re"((?U-U:a*))(a*)") ==
-    @[@["aa"], @[""]]
+    @["aa", ""]
 
   check not "a\Lb\L".isMatch(re"(?sm)a.b(?-sm:.)")
   check "a\Lb\L".isMatch(re"(?ms)a.b(?s-m:.)")
@@ -831,23 +823,23 @@ test "tfind":
     var m: RegexMatch
     check "abcd".find(re"^abcd$", m)
   check "2222".findWithCapt(re"(22)*") ==
-    @[@["22", "22"]]
+    @["22"]
   block:
     var m: RegexMatch
     check "2222".find(re"(22)*", m)
-    check m.group(0) == @[0 .. 1, 2 .. 3]
+    check m.group(0) == 2 .. 3
   block:
     var m: RegexMatch
     check "abcd".find(re"(ab)", m)
-    check m.group(0) == @[0 .. 1]
+    check m.group(0) == 0 .. 1
   block:
     var m: RegexMatch
     check "abcd".find(re"(bc)", m)
-    check m.group(0) == @[1 .. 2]
+    check m.group(0) == 1 .. 2
   block:
     var m: RegexMatch
     check "abcd".find(re"(cd)", m)
-    check m.group(0) == @[2 .. 3]
+    check m.group(0) == 2 .. 3
   block:
     var m: RegexMatch
     check "abcd".find(re"bc", m)
@@ -947,14 +939,14 @@ test "tfindall":
   check findAllBounds("a", re"a") == @[0 .. 0]
   check findAllBounds("a", re"b") == newSeq[Slice[int]]()
   check findAllBounds("", re"b") == newSeq[Slice[int]]()
-  check findAllBounds("a", re"") == @[0 .. -1]
-  check findAllBounds("ab", re"") == @[0 .. -1, 1 .. 0]
-  check findAllBounds("a", re"\b") == @[0 .. -1]
+  check findAllBounds("a", re"") == @[0 .. -1, 1 .. 0]
+  check findAllBounds("ab", re"") == @[0 .. -1, 1 .. 0, 2 .. 1]
+  check findAllBounds("a", re"\b") == @[0 .. -1, 1 .. 0]
   check findAllBounds("aΪⒶ弢", re"Ϊ") == @[1 .. 2]
   check findAllBounds("aΪⒶ弢", re"Ⓐ") == @[3 .. 5]
   check findAllBounds("aΪⒶ弢", re"弢") == @[6 .. 9]
   check findAllBounds("aΪⒶ弢aΪⒶ弢", re"Ⓐ") == @[3 .. 5, 13 .. 15]
-  check findAllBounds("aaa", re"a*") == @[0 .. 2]
+  check findAllBounds("aaa", re"a*") == @[0 .. 2, 3 .. 2]
 
 #[
 test "tfindandcaptureall":
@@ -1205,7 +1197,7 @@ test "tmisc":
     check "one<TAG>two</TAG>three".find(re"<TAG\b[^>]*>(.*?)</TAG>", m)
     check m.boundaries == 3 .. 16
   check("one<TAG>two</TAG>three".findWithCapt(
-    re"<TAG\b[^>]*>(.*?)</TAG>") == @[@["two"]])
+    re"<TAG\b[^>]*>(.*?)</TAG>") == @["two"])
   # IP Addresses
   block:
     const ip = re"""(?x)
@@ -1220,7 +1212,7 @@ test "tmisc":
     \b
     """
     check "127.0.0.1".findWithCapt(ip) ==
-      @[@["127"], @["0"], @["0"], @["1"]]
+      @["127", "0", "0", "1"]
     check not "127.0.0.999".isMatch(ip)
   # Floating Point Numbers
   block:
@@ -1228,7 +1220,7 @@ test "tmisc":
     check "3.14".find(re"^[-+]?[0-9]*\.?[0-9]+$", m)
     check m.boundaries == 0 .. 3
   check "1.602e-19".findWithCapt(
-    re"^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$") == @[@["e-19"]]
+    re"^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$") == @["e-19"]
   # E-mail Addresses
   block:
     const email = re"""(?x)
@@ -1284,9 +1276,9 @@ test "tmisc":
      (0[1-9]|[12][0-9]|3[01])$
     """
     check "1999-01-01".findWithCapt(date) ==
-      @[@["1999"], @["01"], @["01"]]
+      @["1999", "01", "01"]
     check "1999/01-01".findWithCapt(date) ==
-      @[@["1999"], @["01"], @["01"]]
+      @["1999", "01", "01"]
     check not "1999-13-33".isMatch(date)
   # Near operator emulation
   block:
@@ -1309,7 +1301,7 @@ test "tmisc":
     var m: RegexMatch
     check "①②③".find(re"①(②)③", m)
     check m.boundaries == 0 ..< "①②③".len
-  check "①②③".findWithCapt(re"①(②)③") == @[@["②"]]
+  check "①②③".findWithCapt(re"①(②)③") == @["②"]
   block:
     var m: RegexMatch
     check "①②③".find(re"[①②③]*", m)
@@ -1324,7 +1316,7 @@ test "tlook_around":
   check "ab".isMatch(re"a(?=b)\w")
   check not "ab".isMatch(re"a(?=b)")
   check not "ab".isMatch(re"a(?=c)\w")
-  check "ab".matchWithCapt(re"(a(?=b))b") == @[@["a"]]
+  check "ab".matchWithCapt(re"(a(?=b))b") == @["a"]
 
 test "tpretty_errors":
   block:
@@ -1388,25 +1380,25 @@ test "treuse_regex_match":
   block:
     var m: RegexMatch
     check "2222".find(re"(22)*", m)
-    check m.group(0) == @[0 .. 1, 2 .. 3]
+    check m.group(0) == 2 .. 3
 
     check "abcd".find(re"(ab)", m)
-    check m.group(0) == @[0 .. 1]
+    check m.group(0) == 0 .. 1
 
     check "abcd".find(re"(bc)", m)
-    check m.group(0) == @[1 .. 2]
+    check m.group(0) == 1 .. 2
 
     check "abcd".find(re"(cd)", m)
-    check m.group(0) == @[2 .. 3]
+    check m.group(0) == 2 .. 3
 
   block:
     var m: RegexMatch
     check "foobar".match(re"(?P<foo>(?P<bar>\w*))", m)
-    check m.group("foo") == @[0..5]
-    check m.group("bar") == @[0..5]
+    check m.group("foo") == 0..5
+    check m.group("bar") == 0..5
 
     check "foobar".match(re"(?P<foo>\w*)", m)
-    check m.group("foo") == @[0..5]
+    check m.group("foo") == 0..5
     expect(ValueError):
       discard m.group("bar")
 
@@ -1431,14 +1423,14 @@ test "capturingGroupsNames":
     let text = "hello world"
     var m: RegexMatch
     doAssert text.match(re"(?P<greet>hello) (?P<who>world)", m)
-    doAssert m.group("greet", text) == @["hello"]
-    doAssert m.group("who", text) == @["world"]
+    doAssert m.group("greet", text) == "hello"
+    doAssert m.group("who", text) == "world"
     
   block:
     let text = "hello world foo bar"
     var m: RegexMatch
     doAssert text.match(re"(?P<greet>hello) (?:(?P<who>[^\s]+)\s?)+", m)
-    doAssert m.group("greet", text) == @["hello"]
+    doAssert m.group("greet", text) == "hello"
     let whoGroups = m.group("who", text)
     for w in @["foo", "bar", "world"]:
       doAssert whoGroups.contains(w)
@@ -1540,59 +1532,59 @@ test "tmisc2":
   check match("$%&", re"\W+", m)
   check match("abc123", re"[^\W]+", m)
   check match("aabcd", re"(aa)bcd", m) and
-    m.captures == @[@[0 .. 1]]
+    m.captures == @[0 .. 1]
   check match("aabc", re"(aa)(bc)", m) and
-    m.captures == @[@[0 .. 1], @[2 .. 3]]
+    m.captures == @[0 .. 1, 2 .. 3]
   check match("ab", re"a(b|c)", m) and
-    m.captures == @[@[1 .. 1]]
+    m.captures == @[1 .. 1]
   check match("ab", re"(ab)*", m) and
-    m.captures == @[@[0 .. 1]]
+    m.captures == @[0 .. 1]
   check match("abab", re"(ab)*", m) and
-    m.captures == @[@[0 .. 1, 2 .. 3]]
+    m.captures == @[2 .. 3]
   check match("ab", re"((a))b", m) and
-    m.captures == @[@[0 .. 0], @[0 .. 0]]
+    m.captures == @[0 .. 0, 0 .. 0]
   check match("c", re"((ab)*)c", m) and
-    m.captures == @[@[0 .. -1], @[]]
+    m.captures == @[0 .. -1, reNonCapture]
   check match("aab", re"((a)*b)", m) and
-    m.captures == @[@[0 .. 2], @[0 .. 0, 1 .. 1]]
+    m.captures == @[0 .. 2, 1 .. 1]
   check match("abbbbcccc", re"a(b|c)*", m) and
-    m.captures == @[@[1 .. 1, 2 .. 2, 3 .. 3, 4 .. 4, 5 .. 5, 6 .. 6, 7 .. 7, 8 .. 8]]
+    m.captures == @[8 .. 8]
   check match("ab", re"(a*)(b*)", m) and
-    m.captures == @[@[0 .. 0], @[1 .. 1]]
+    m.captures == @[0 .. 0, 1 .. 1]
   check match("ab", re"(a)*(b)*", m) and
-    m.captures == @[@[0 .. 0], @[1 .. 1]]
+    m.captures == @[0 .. 0, 1 .. 1]
   check match("ab", re"(a)*b*", m) and
-    m.captures == @[@[0 .. 0]]
+    m.captures == @[0 .. 0]
   check match("abbb", re"((a(b)*)*(b)*)", m) and
-    m.captures == @[@[0 .. 3], @[0 .. 3], @[1 .. 1, 2 .. 2, 3 .. 3], @[]]
+    m.captures == @[0 .. 3, 0 .. 3, 3 .. 3, reNonCapture]
   check match("aa", re"(a)+", m) and
-    m.captures == @[@[0 .. 0, 1 .. 1]]
+    m.captures == @[1 .. 1]
   check match("abab", re"(ab)+", m) and
-    m.captures == @[@[0 .. 1, 2 .. 3]]
+    m.captures == @[2 .. 3]
   check match("a", re"(a)?", m) and
-    m.captures == @[@[0 .. 0]]
+    m.captures == @[0 .. 0]
   check match("ab", re"(ab)?", m) and
-    m.captures == @[@[0 .. 1]]
+    m.captures == @[0 .. 1]
   check match("aaabbbaaa", re"(a*|b*)*", m) and
-    m.captures == @[@[0 .. 2, 3 .. 5, 6 .. 8]]
+    m.captures == @[9 .. 8]
   check match("abab", re"(a(b))*", m) and
-    m.captures == @[@[0 .. 1, 2 .. 3], @[1 .. 1, 3 .. 3]]
+    m.captures == @[2 .. 3, 3 .. 3]
   check match("aaanasdnasd", re"((a)*n?(asd)*)*", m) and
-    m.captures == @[@[0 .. 6, 7 .. 10], @[0 .. 0, 1 .. 1, 2 .. 2], @[4 .. 6, 8 .. 10]]
+    m.captures == @[11 .. 10, 2 .. 2, 8 .. 10]
   check match("aaanasdnasd", re"((a)*n?(asd))*", m) and
-    m.captures == @[@[0 .. 6, 7 .. 10], @[0 .. 0, 1 .. 1, 2 .. 2], @[4 .. 6, 8 .. 10]]
+    m.captures == @[7 .. 10, 2 .. 2, 8 .. 10]
   check match("abd", re"((ab)c)|((ab)d)", m) and
-    m.captures == @[@[], @[], @[0 .. 2], @[0 .. 1]]
+    m.captures == @[reNonCapture, reNonCapture, 0 .. 2, 0 .. 1]
   check match("aaa", re"(a*)", m) and
-    m.captures == @[@[0 .. 2]]
+    m.captures == @[0 .. 2]
   check match("aaaa", re"(a*)(a*)", m) and
-    m.captures == @[@[0 .. 3], @[4 .. 3]]
+    m.captures == @[0 .. 3, 4 .. 3]
   check match("aaaa", re"(a*?)(a*?)", m) and
-    m.captures == @[@[0 .. -1], @[0 .. 3]]
+    m.captures == @[0 .. -1, 0 .. 3]
   check match("aaaa", re"(a)*(a)", m) and
-    m.captures == @[@[0 .. 0, 1 .. 1, 2 .. 2], @[3 .. 3]]
+    m.captures == @[2 .. 2, 3 .. 3]
   check "11222211".find(re"(22)+", m) and
-    m.group(0) == @[2 .. 3, 4 .. 5]
+    m.group(0) == 4 .. 5
   check match("650-253-0001", re"[0-9]+-[0-9]+-[0-9]+", m)
   check not match("abc-253-0001", re"[0-9]+-[0-9]+-[0-9]+", m)
   check not match("650-253", re"[0-9]+-[0-9]+-[0-9]+", m)

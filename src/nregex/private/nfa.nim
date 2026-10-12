@@ -181,30 +181,46 @@ func teClosure(
   result: var TeClosure,
   nfa: seq[Node],
   state: int16,
-  visited: var set[int16],
+  processing: var seq[int16],
+  visited: var seq[seq[seq[int16]]],
   zTransitions: Zclosure
 ) =
-  if state in visited:
+  ## A loop body is entered once per path, so an empty
+  ## iteration exits the loop, same as PCRE:
+  ## ``"aa", re"(a*)*"`` captures ``2 .. 1``.
+  ## A state is visited again if the loops being
+  ## processed differ, i.e.: an inner loop
+  ## in a new outer loop iteration
+  if processing in visited[state]:
     return
-  visited.incl(state)
+  visited[state].add processing
   var zTransitionsCurr = zTransitions
   if isTransitionZ(nfa[state]):
     zTransitionsCurr.add(state)
   if nfa[state].kind in matchableKind + {reEOE}:
     result.add((state, zTransitionsCurr))
     return
-  for s in nfa[state].next:
-    teClosure(result, nfa, s, visited, zTransitionsCurr)
+  for i, s in nfa[state].next.pairs:
+    if nfa[state].kind in repetitionKind:
+      # isGreedy means lazy here, see exptransformation
+      let exitIdx = int(not nfa[state].isGreedy)
+      if s notin processing or i == exitIdx:
+        processing.add s
+        teClosure(result, nfa, s, processing, visited, zTransitionsCurr)
+        discard processing.pop()
+    else:
+      teClosure(result, nfa, s, processing, visited, zTransitionsCurr)
 
 func teClosure(
   result: var TeClosure,
   nfa: seq[Node],
   state: int16
 ) =
-  var visited: set[int16]
+  var processing: seq[int16]
+  var visited = newSeq[seq[seq[int16]]](nfa.len)
   var zclosure: Zclosure
   for s in nfa[state].next:
-    teClosure(result, nfa, s, visited, zclosure)
+    teClosure(result, nfa, s, processing, visited, zclosure)
 
 type
   TransitionsAll* = seq[seq[int16]]

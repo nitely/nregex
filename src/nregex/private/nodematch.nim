@@ -11,7 +11,7 @@ import common
 func isWord*(r: Rune): bool {.inline.} =
   utmWord in unicodeTypes(r)
 
-func isWordAscii(r: Rune): bool {.inline.} =
+func isWordAscii*(r: Rune): bool {.inline.} =
   ## return ``true`` if the given
   ## rune is in ``[A-Za-z0-9]`` range
   case r.int
@@ -79,10 +79,10 @@ func contains(sr: seq[Slice[Rune]], r: Rune): bool =
     if result:
       break
 
-func isWhiteSpace(r: Rune): bool {.inline.} =
+func isWhiteSpaceUnicode*(r: Rune): bool {.inline.} =
   utmWhiteSpace in unicodeTypes(r)
 
-func isWhiteSpaceAscii(r: Rune): bool {.inline.} =
+func isWhiteSpaceAscii*(r: Rune): bool {.inline.} =
   case r.int
   of ' '.ord,
       '\t'.ord,
@@ -94,14 +94,14 @@ func isWhiteSpaceAscii(r: Rune): bool {.inline.} =
   else:
     false
 
-func isDigitAscii(r: Rune): bool {.inline.} =
+func isDigitAscii*(r: Rune): bool {.inline.} =
   case r.int
   of '0'.ord .. '9'.ord:
     true
   else:
     false
 
-func isAnyAscii(r: Rune): bool {.inline.} =
+func isAnyAscii*(r: Rune): bool {.inline.} =
   (r.int <= int8.high and
    r != lineBreakRune)
 
@@ -128,9 +128,9 @@ func match*(n: Node, r: Rune): bool =
   of reNotDigit:
     not r.isDecimal()
   of reWhiteSpace:
-    r.isWhiteSpace()
+    r.isWhiteSpaceUnicode()
   of reNotWhiteSpace:
-    not r.isWhiteSpace()
+    not r.isWhiteSpaceUnicode()
   of reInSet, reNotSet:
     var matches = (
       r in n.cps or
